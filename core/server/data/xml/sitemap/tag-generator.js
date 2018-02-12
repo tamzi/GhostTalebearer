@@ -1,18 +1,14 @@
 var _      = require('lodash'),
     api    = require('../../../api'),
-    config = require('../../../config'),
+    urlService = require('../../../services/url'),
     BaseMapGenerator = require('./base-generator');
 
 // A class responsible for generating a sitemap from posts and keeping it updated
 function TagsMapGenerator(opts) {
-    _.extend(this, _.defaults(opts || {}, TagsMapGenerator.Defaults));
+    _.extend(this, opts);
 
     BaseMapGenerator.apply(this, arguments);
 }
-
-TagsMapGenerator.Defaults = {
-    // TODO?
-};
 
 // Inherit from the base generator class
 _.extend(TagsMapGenerator.prototype, BaseMapGenerator.prototype);
@@ -30,14 +26,19 @@ _.extend(TagsMapGenerator.prototype, {
             context: {
                 internal: true
             },
+            filter: 'visibility:public',
             limit: 'all'
         }).then(function (resp) {
             return resp.tags;
         });
     },
 
-    getUrlForDatum: function (tag, permalinks) {
-        return config.urlFor('tag', {tag: tag, permalinks: permalinks}, true);
+    validateDatum: function (datum) {
+        return datum.visibility === 'public';
+    },
+
+    getUrlForDatum: function (tag) {
+        return urlService.utils.urlFor('tag', {tag: tag}, true);
     },
 
     getPriorityForDatum: function () {

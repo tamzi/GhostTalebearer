@@ -1,15 +1,13 @@
-/*globals describe, before, beforeEach, afterEach, it*/
-/*jshint expr:true*/
-var testUtils       = require('../../utils'),
-    should          = require('should'),
-    sinon           = require('sinon'),
+var should = require('should'),
+    sinon = require('sinon'),
+    testUtils = require('../../utils'),
 
     // Stuff we are testing
-    SettingsModel   = require('../../../server/models/settings').Settings,
-    config          = require('../../../server/config'),
-    events          = require('../../../server/events'),
-    sandbox         = sinon.sandbox.create(),
-    context         = testUtils.context.admin;
+    SettingsModel = require('../../../server/models/settings').Settings,
+    db = require('../../../server/data/db'),
+    common = require('../../../server/lib/common'),
+    context = testUtils.context.admin,
+    sandbox = sinon.sandbox.create();
 
 describe('Settings Model', function () {
     var eventSpy;
@@ -28,7 +26,7 @@ describe('Settings Model', function () {
     });
 
     beforeEach(function () {
-        eventSpy = sandbox.spy(events, 'emit');
+        eventSpy = sandbox.spy(common.events, 'emit');
     });
 
     describe('API', function () {
@@ -80,9 +78,9 @@ describe('Settings Model', function () {
                 edited.attributes.key.should.equal('description');
                 edited.attributes.value.should.equal('new value');
 
-                eventSpy.calledTwice.should.be.true;
-                eventSpy.firstCall.calledWith('settings.edited').should.be.true;
-                eventSpy.secondCall.calledWith('settings.description.edited').should.be.true;
+                eventSpy.calledTwice.should.be.true();
+                eventSpy.firstCall.calledWith('settings.edited').should.be.true();
+                eventSpy.secondCall.calledWith('settings.description.edited').should.be.true();
 
                 done();
             }).catch(done);
@@ -118,10 +116,15 @@ describe('Settings Model', function () {
                 editedModel.attributes.value.should.equal(model2.value);
 
                 eventSpy.callCount.should.equal(4);
-                eventSpy.getCall(0).calledWith('settings.edited').should.be.true;
-                eventSpy.getCall(1).calledWith('settings.description.edited').should.be.true;
-                eventSpy.getCall(2).calledWith('settings.edited').should.be.true;
-                eventSpy.getCall(3).calledWith('settings.title.edited').should.be.true;
+
+                // We can't rely on the order of updates.
+                // We can however expect the first and third call to
+                // to be `settings.edited`.
+                eventSpy.firstCall.calledWith('settings.edited').should.be.true();
+                eventSpy.thirdCall.calledWith('settings.edited').should.be.true();
+
+                eventSpy.calledWith('settings.description.edited').should.be.true();
+                eventSpy.calledWith('settings.title.edited').should.be.true();
 
                 done();
             }).catch(done);
@@ -135,43 +138,40 @@ describe('Settings Model', function () {
 
             SettingsModel.add(newSetting, context).then(function (createdSetting) {
                 should.exist(createdSetting);
-                createdSetting.has('uuid').should.equal(true);
+                createdSetting.has('uuid').should.equal(false);
                 createdSetting.attributes.key.should.equal(newSetting.key, 'key is correct');
                 createdSetting.attributes.value.should.equal(newSetting.value, 'value is correct');
                 createdSetting.attributes.type.should.equal('core');
 
-                eventSpy.calledTwice.should.be.true;
-                eventSpy.firstCall.calledWith('settings.added').should.be.true;
-                eventSpy.secondCall.calledWith('settings.TestSetting1.added').should.be.true;
+                eventSpy.calledTwice.should.be.true();
+                eventSpy.firstCall.calledWith('settings.added').should.be.true();
+                eventSpy.secondCall.calledWith('settings.TestSetting1.added').should.be.true();
 
                 done();
             }).catch(done);
         });
 
         it('can destroy', function (done) {
-            // dont't use id 1, since it will delete databaseversion
-            var settingToDestroy = {id: 2};
+            SettingsModel.findAll().then(function (allSettings) {
+                SettingsModel.findOne({id: allSettings.models[1].id}).then(function (results) {
+                    should.exist(results);
+                    results.attributes.id.should.equal(allSettings.models[1].id);
+                    return SettingsModel.destroy({id: allSettings.models[1].id});
+                }).then(function (response) {
+                    response.toJSON().should.be.empty();
+                    return SettingsModel.findOne({id: allSettings.models[1].id});
+                }).then(function (newResults) {
+                    should.equal(newResults, null);
 
-            SettingsModel.findOne(settingToDestroy).then(function (results) {
-                should.exist(results);
-                results.attributes.id.should.equal(settingToDestroy.id);
-
-                return SettingsModel.destroy(settingToDestroy);
-            }).then(function (response) {
-                response.toJSON().should.be.empty;
-
-                return SettingsModel.findOne(settingToDestroy);
-            }).then(function (newResults) {
-                should.equal(newResults, null);
-
-                done();
+                    done();
+                }).catch(done);
             }).catch(done);
         });
     });
 
     describe('populating defaults from settings.json', function () {
         beforeEach(function (done) {
-            config.database.knex('settings').truncate().then(function () {
+            db.knex('settings').truncate().then(function () {
                 done();
             });
         });
@@ -189,7 +189,7 @@ describe('Settings Model', function () {
             }).then(function (descriptionSetting) {
                 // Testing against the actual value in default-settings.json feels icky,
                 // but it's easier to fix the test if that ever changes than to mock out that behaviour
-                descriptionSetting.get('value').should.equal('Just a blogging platform.');
+                descriptionSetting.get('value').should.equal('The professional publishing platform');
                 done();
             }).catch(done);
         });

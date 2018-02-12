@@ -1,11 +1,9 @@
-/*globals describe, it, before, beforeEach, afterEach */
-/*jshint expr:true*/
-var testUtils       = require('../../utils'),
-    should          = require('should'),
+var should = require('should'),
+    testUtils = require('../../utils'),
 
     // Stuff we are testing
     PermissionModel = require('../../../server/models/permission').Permission,
-    context         = testUtils.context.admin;
+    context = testUtils.context.admin;
 
 describe('Permission Model', function () {
     // Keep the DB clean
@@ -28,7 +26,7 @@ describe('Permission Model', function () {
     });
 
     it('can findOne', function (done) {
-        PermissionModel.findOne({id: 1}).then(function (foundPermission) {
+        PermissionModel.findOne({id: testUtils.DataGenerator.Content.permissions[0].id}).then(function (foundPermission) {
             should.exist(foundPermission);
             foundPermission.get('created_at').should.be.an.instanceof(Date);
 
@@ -37,12 +35,12 @@ describe('Permission Model', function () {
     });
 
     it('can edit', function (done) {
-        PermissionModel.findOne({id: 1}).then(function (foundPermission) {
+        PermissionModel.findOne({id: testUtils.DataGenerator.Content.permissions[0].id}).then(function (foundPermission) {
             should.exist(foundPermission);
 
             return foundPermission.set({name: 'updated'}).save(null, context);
         }).then(function () {
-            return PermissionModel.findOne({id: 1});
+            return PermissionModel.findOne({id: testUtils.DataGenerator.Content.permissions[0].id});
         }).then(function (updatedPermission) {
             should.exist(updatedPermission);
 
@@ -69,7 +67,7 @@ describe('Permission Model', function () {
     });
 
     it('can destroy', function (done) {
-        var firstPermission = {id: 1};
+        var firstPermission = {id: testUtils.DataGenerator.Content.permissions[0].id};
 
         PermissionModel.findOne(firstPermission).then(function (foundPermission) {
             should.exist(foundPermission);
@@ -77,7 +75,7 @@ describe('Permission Model', function () {
 
             return PermissionModel.destroy(firstPermission);
         }).then(function (response) {
-            response.toJSON().should.be.empty;
+            response.toJSON().should.be.empty();
             return PermissionModel.findOne(firstPermission);
         }).then(function (newResults) {
             should.equal(newResults, null);

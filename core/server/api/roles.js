@@ -1,16 +1,18 @@
 // # Roles API
 // RESTful API for the Role resource
-var Promise         = require('bluebird'),
-    canThis         = require('../permissions').canThis,
-    dataProvider    = require('../models'),
-    errors          = require('../errors'),
+var Promise = require('bluebird'),
+    pipeline = require('../lib/promise/pipeline'),
+    localUtils = require('./utils'),
+    canThis = require('../services/permissions').canThis,
+    models = require('../models'),
+    docName = 'roles',
 
     roles;
 
 /**
  * ## Roles API Methods
  *
- * **See:** [API Methods](index.js.html#api%20methods)
+ * **See:** [API Methods](constants.js.html#api%20methods)
  */
 roles = {
     /**
@@ -27,29 +29,49 @@ roles = {
      * @returns {Promise(Roles)} Roles Collection
      */
     browse: function browse(options) {
-        options = options || {};
+        var permittedOptions = ['permissions'],
+            tasks;
 
-        return canThis(options.context).browse.role().then(function () {
-            return dataProvider.Role.findAll(options).then(function (results) {
-                var roles = results.map(function (r) {
-                    return r.toJSON();
+        /**
+         * ### Model Query
+         * Make the call to the Model layer
+         * @param {Object} options
+         * @returns {Object} options
+         */
+        function modelQuery(options) {
+            return models.Role.findAll(options)
+                .then(function onModelResponse(models) {
+                    var roles = models.map(function (role) {
+                        return role.toJSON();
+                    });
+
+                    if (options.permissions !== 'assign') {
+                        return {roles: roles};
+                    }
+
+                    return Promise.filter(roles.map(function (role) {
+                        return canThis(options.context).assign.role(role)
+                            .return(role)
+                            .catch(function () {});
+                    }), function (value) {
+                        return value && value.name !== 'Owner';
+                    }).then(function (roles) {
+                        return {
+                            roles: roles
+                        };
+                    });
                 });
+        }
 
-                if (options.permissions !== 'assign') {
-                    return {roles: roles};
-                }
+        // Push all of our tasks into a `tasks` array in the correct order
+        tasks = [
+            localUtils.validate(docName, {opts: permittedOptions}),
+            localUtils.handlePermissions(docName, 'browse'),
+            modelQuery
+        ];
 
-                return Promise.filter(roles.map(function (role) {
-                    return canThis(options.context).assign.role(role)
-                    .return(role)
-                    .catch(function () {});
-                }), function (value) {
-                    return value && value.name !== 'Owner';
-                }).then(function (roles) {
-                    return {roles: roles};
-                });
-            });
-        }).catch(errors.logAndThrowError);
+        // Pipeline calls each task passing the result of one to be the arguments for the next
+        return pipeline(tasks, options);
     }
 };
 

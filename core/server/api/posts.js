@@ -1,33 +1,27 @@
 // # Posts API
 // RESTful API for the Post resource
-var Promise         = require('bluebird'),
-    _               = require('lodash'),
-    dataProvider    = require('../models'),
-    canThis         = require('../permissions').canThis,
-    errors          = require('../errors'),
-    utils           = require('./utils'),
-
-    docName         = 'posts',
-    allowedIncludes = ['created_by', 'updated_by', 'published_by', 'author', 'tags', 'fields', 'next', 'previous'],
+var Promise = require('bluebird'),
+    _ = require('lodash'),
+    pipeline = require('../lib/promise/pipeline'),
+    localUtils = require('./utils'),
+    models = require('../models'),
+    common = require('../lib/common'),
+    docName = 'posts',
+    allowedIncludes = [
+        'created_by', 'updated_by', 'published_by', 'author', 'tags', 'fields'
+    ],
+    unsafeAttrs = ['author_id', 'status'],
     posts;
 
-// ## Helpers
-function prepareInclude(include) {
-    include = include || '';
-    include = _.intersection(include.split(','), allowedIncludes);
-
-    return include;
-}
-
 /**
- * ## Posts API Methods
+ * ### Posts API Methods
  *
- * **See:** [API Methods](index.js.html#api%20methods)
+ * **See:** [API Methods](constants.js.html#api%20methods)
  */
-posts = {
 
+posts = {
     /**
-     * ### Browse
+     * ## Browse
      * Find a paginated set of posts
      *
      * Will only return published posts unless we have an authenticated user and an alternative status
@@ -35,60 +29,94 @@ posts = {
      *
      * Will return without static pages unless told otherwise
      *
-     * Can return posts for a particular tag by passing a tag slug in
      *
      * @public
      * @param {{context, page, limit, status, staticPages, tag, featured}} options (optional)
-     * @returns {Promise(Posts)} Posts Collection with Meta
+     * @returns {Promise<Posts>} Posts Collection with Meta
      */
     browse: function browse(options) {
-        options = options || {};
+        var extraOptions = ['status', 'formats'],
+            permittedOptions,
+            tasks;
 
-        if (!(options.context && options.context.user)) {
-            options.status = 'published';
+        // Workaround to remove static pages from results
+        // TODO: rework after https://github.com/TryGhost/Ghost/issues/5151
+        if (options && options.context && (options.context.user || options.context.internal)) {
+            extraOptions.push('staticPages');
+        }
+        permittedOptions = localUtils.browseDefaultOptions.concat(extraOptions);
+
+        /**
+         * ### Model Query
+         *  Make the call to the Model layer
+         * @param {Object} options
+         * @returns {Object} options
+         */
+        function modelQuery(options) {
+            return models.Post.findPage(options);
         }
 
-        if (options.include) {
-            options.include = prepareInclude(options.include);
-        }
+        // Push all of our tasks into a `tasks` array in the correct order
+        tasks = [
+            localUtils.validate(docName, {opts: permittedOptions}),
+            localUtils.handlePublicPermissions(docName, 'browse', unsafeAttrs),
+            localUtils.convertOptions(allowedIncludes, models.Post.allowedFormats),
+            modelQuery
+        ];
 
-        return dataProvider.Post.findPage(options);
+        // Pipeline calls each task passing the result of one to be the arguments for the next
+        return pipeline(tasks, options);
     },
 
     /**
-     * ### Read
+     * ## Read
      * Find a post, by ID, UUID, or Slug
      *
      * @public
-     * @param {{id_or_slug (required), context, status, include, ...}} options
-     * @return {Promise(Post)} Post
+     * @param {Object} options
+     * @return {Promise<Post>} Post
      */
     read: function read(options) {
         var attrs = ['id', 'slug', 'status', 'uuid'],
-            data = _.pick(options, attrs);
+            // NOTE: the scheduler API uses the post API and forwards custom options
+            extraAllowedOptions = options.opts || ['formats'],
+            tasks;
 
-        options = _.omit(options, attrs);
+        /**
+         * ### Model Query
+         * Make the call to the Model layer
+         * @param {Object} options
+         * @returns {Object} options
+         */
+        function modelQuery(options) {
+            return models.Post.findOne(options.data, _.omit(options, ['data']))
+                .then(function onModelResponse(model) {
+                    if (!model) {
+                        return Promise.reject(new common.errors.NotFoundError({
+                            message: common.i18n.t('errors.api.posts.postNotFound')
+                        }));
+                    }
 
-        // only published posts if no user is present
-        if (!data.uuid && !(options.context && options.context.user)) {
-            data.status = 'published';
+                    return {
+                        posts: [model.toJSON(options)]
+                    };
+                });
         }
 
-        if (options.include) {
-            options.include = prepareInclude(options.include);
-        }
+        // Push all of our tasks into a `tasks` array in the correct order
+        tasks = [
+            localUtils.validate(docName, {attrs: attrs, opts: extraAllowedOptions}),
+            localUtils.handlePublicPermissions(docName, 'read', unsafeAttrs),
+            localUtils.convertOptions(allowedIncludes, models.Post.allowedFormats),
+            modelQuery
+        ];
 
-        return dataProvider.Post.findOne(data, options).then(function (result) {
-            if (result) {
-                return {posts: [result.toJSON(options)]};
-            }
-
-            return Promise.reject(new errors.NotFoundError('Post not found.'));
-        });
+        // Pipeline calls each task passing the result of one to be the arguments for the next
+        return pipeline(tasks, options);
     },
 
     /**
-     * ### Edit
+     * ## Edit
      * Update properties of a post
      *
      * @public
@@ -97,34 +125,54 @@ posts = {
      * @return {Promise(Post)} Edited Post
      */
     edit: function edit(object, options) {
-        return canThis(options.context).edit.post(options.id).then(function () {
-            return utils.checkObject(object, docName, options.id).then(function (checkedPostData) {
-                if (options.include) {
-                    options.include = prepareInclude(options.include);
-                }
+        var tasks,
+            // NOTE: the scheduler API uses the post API and forwards custom options
+            extraAllowedOptions = options.opts || [];
 
-                return dataProvider.Post.edit(checkedPostData.posts[0], options);
-            }).then(function (result) {
-                if (result) {
-                    var post = result.toJSON(options);
+        /**
+         * ### Model Query
+         * Make the call to the Model layer
+         * @param {Object} options
+         * @returns {Object} options
+         */
+        function modelQuery(options) {
+            return models.Post.edit(options.data.posts[0], _.omit(options, ['data']))
+                .then(function onModelResponse(model) {
+                    if (!model) {
+                        return Promise.reject(new common.errors.NotFoundError({
+                            message: common.i18n.t('errors.api.posts.postNotFound')
+                        }));
+                    }
+
+                    var post = model.toJSON(options);
 
                     // If previously was not published and now is (or vice versa), signal the change
+                    // @TODO: `statusChanged` get's added for the API headers only. Reconsider this.
                     post.statusChanged = false;
-                    if (result.updated('status') !== result.get('status')) {
+                    if (model.updated('status') !== model.get('status')) {
                         post.statusChanged = true;
                     }
-                    return {posts: [post]};
-                }
 
-                return Promise.reject(new errors.NotFoundError('Post not found.'));
-            });
-        }, function () {
-            return Promise.reject(new errors.NoPermissionError('You do not have permission to edit posts.'));
-        });
+                    return {
+                        posts: [post]
+                    };
+                });
+        }
+
+        // Push all of our tasks into a `tasks` array in the correct order
+        tasks = [
+            localUtils.validate(docName, {opts: localUtils.idDefaultOptions.concat(extraAllowedOptions)}),
+            localUtils.handlePermissions(docName, 'edit', unsafeAttrs),
+            localUtils.convertOptions(allowedIncludes),
+            modelQuery
+        ];
+
+        // Pipeline calls each task passing the result of one to be the arguments for the next
+        return pipeline(tasks, object, options);
     },
 
     /**
-     * ### Add
+     * ## Add
      * Create a new post along with any tags
      *
      * @public
@@ -133,58 +181,78 @@ posts = {
      * @return {Promise(Post)} Created Post
      */
     add: function add(object, options) {
-        options = options || {};
+        var tasks;
 
-        return canThis(options.context).add.post().then(function () {
-            return utils.checkObject(object, docName).then(function (checkedPostData) {
-                if (options.include) {
-                    options.include = prepareInclude(options.include);
-                }
+        /**
+         * ### Model Query
+         * Make the call to the Model layer
+         * @param {Object} options
+         * @returns {Object} options
+         */
+        function modelQuery(options) {
+            return models.Post.add(options.data.posts[0], _.omit(options, ['data']))
+                .then(function onModelResponse(model) {
+                    var post = model.toJSON(options);
 
-                return dataProvider.Post.add(checkedPostData.posts[0], options);
-            }).then(function (result) {
-                var post = result.toJSON(options);
+                    if (post.status === 'published') {
+                        // When creating a new post that is published right now, signal the change
+                        post.statusChanged = true;
+                    }
 
-                if (post.status === 'published') {
-                    // When creating a new post that is published right now, signal the change
-                    post.statusChanged = true;
-                }
-                return {posts: [post]};
-            });
-        }, function () {
-            return Promise.reject(new errors.NoPermissionError('You do not have permission to add posts.'));
-        });
+                    return {posts: [post]};
+                });
+        }
+
+        // Push all of our tasks into a `tasks` array in the correct order
+        tasks = [
+            localUtils.validate(docName),
+            localUtils.handlePermissions(docName, 'add', unsafeAttrs),
+            localUtils.convertOptions(allowedIncludes),
+            modelQuery
+        ];
+
+        // Pipeline calls each task passing the result of one to be the arguments for the next
+        return pipeline(tasks, object, options);
     },
 
     /**
-     * ### Destroy
+     * ## Destroy
      * Delete a post, cleans up tag relations, but not unused tags
      *
      * @public
      * @param {{id (required), context,...}} options
-     * @return {Promise(Post)} Deleted Post
+     * @return {Promise}
      */
     destroy: function destroy(options) {
-        return canThis(options.context).destroy.post(options.id).then(function () {
-            var readOptions = _.extend({}, options, {status: 'all'});
-            return posts.read(readOptions).then(function (result) {
-                return dataProvider.Post.destroy(options).then(function () {
-                    var deletedObj = result;
+        var tasks;
 
-                    if (deletedObj.posts) {
-                        _.each(deletedObj.posts, function (post) {
-                            post.statusChanged = true;
-                        });
-                    }
+        /**
+         * @function deletePost
+         * @param  {Object} options
+         */
+        function deletePost(options) {
+            var Post = models.Post,
+                data = _.defaults({status: 'all'}, options),
+                fetchOpts = _.defaults({require: true, columns: 'id'}, options);
 
-                    return deletedObj;
-                });
+            return Post.findOne(data, fetchOpts).then(function () {
+                return Post.destroy(options).return(null);
+            }).catch(Post.NotFoundError, function () {
+                throw new common.errors.NotFoundError({message: common.i18n.t('errors.api.posts.postNotFound')});
             });
-        }, function () {
-            return Promise.reject(new errors.NoPermissionError('You do not have permission to remove posts.'));
-        });
-    }
+        }
 
+        // Push all of our tasks into a `tasks` array in the correct order
+        tasks = [
+            localUtils.validate(docName, {opts: localUtils.idDefaultOptions}),
+            localUtils.handlePermissions(docName, 'destroy', unsafeAttrs),
+            localUtils.convertOptions(allowedIncludes),
+            deletePost
+        ];
+
+        // Pipeline calls each task passing the result of one to be the arguments for the next
+        return pipeline(tasks, options);
+    }
 };
 
 module.exports = posts;

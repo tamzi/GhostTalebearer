@@ -2,49 +2,97 @@
  * # Utils
  * Parts of the model code which can be split out and unit tested
  */
-var _               = require('lodash'),
-    filtering;
+var _ = require('lodash'),
+    Promise = require('bluebird'),
+    ObjectId = require('bson-objectid'),
+    common = require('../../lib/common'),
+    attach, detach;
 
-filtering = {
-    preFetch: function preFetch(filterObjects) {
-        var promises = [];
-        _.forOwn(filterObjects, function (obj) {
-            promises.push(obj.fetch());
-        });
+/**
+ * Attach wrapper (please never call attach manual!)
+ *
+ * We register the creating event to be able to hook into the model creation process of Bookshelf.
+ * We need to load the model again, because of a known bookshelf issue:
+ * see https://github.com/tgriesser/bookshelf/issues/629
+ * (withRelated option causes a null value for the foreign key)
+ *
+ * roles [1,2]
+ * roles [{id: 1}, {id: 2}]
+ * roles [{role_id: 1}]
+ * roles [BookshelfModel]
+ */
+attach = function attach(Model, effectedModelId, relation, modelsToAttach, options) {
+    options = options || {};
 
-        return promises;
-    },
-    query: function query(filterObjects, itemCollection) {
-        if (filterObjects.tags) {
-            itemCollection
-                .query('join', 'posts_tags', 'posts_tags.post_id', '=', 'posts.id')
-                .query('where', 'posts_tags.tag_id', '=', filterObjects.tags.id);
-        }
+    var fetchedModel,
+        localOptions = {transacting: options.transacting};
 
-        if (filterObjects.author) {
-            itemCollection
-                .query('where', 'author_id', '=', filterObjects.author.id);
-        }
+    return Model.forge({id: effectedModelId}).fetch(localOptions)
+        .then(function successFetchedModel(_fetchedModel) {
+            fetchedModel = _fetchedModel;
 
-        if (filterObjects.roles) {
-            itemCollection
-                .query('join', 'roles_users', 'roles_users.user_id', '=', 'users.id')
-                .query('where', 'roles_users.role_id', '=', filterObjects.roles.id);
-        }
-    },
-    formatResponse: function formatResponse(filterObjects, options, data) {
-        if (!_.isEmpty(filterObjects)) {
-            data.meta.filters = {};
-        }
-
-        _.forOwn(filterObjects, function (obj, key) {
-            if (!filterObjects[key].isNew()) {
-                data.meta.filters[key] = [filterObjects[key].toJSON(options)];
+            if (!fetchedModel) {
+                throw new common.errors.NotFoundError({level: 'critical', help: effectedModelId});
             }
-        });
 
-        return data;
-    }
+            fetchedModel.related(relation).on('creating', function (collection, data) {
+                data.id = ObjectId.generate();
+            });
+
+            return Promise.resolve(modelsToAttach)
+                .then(function then(models) {
+                    models = _.map(models, function mapper(model) {
+                        if (model.id) {
+                            return model.id;
+                        } else if (!_.isObject(model)) {
+                            return model.toString();
+                        } else {
+                            return model;
+                        }
+                    });
+
+                    return fetchedModel.related(relation).attach(models, localOptions);
+                });
+        })
+        .finally(function () {
+            if (!fetchedModel) {
+                return;
+            }
+
+            fetchedModel.related(relation).off('creating');
+        });
 };
 
-module.exports.filtering = filtering;
+detach = function detach(Model, effectedModelId, relation, modelsToAttach, options) {
+    options = options || {};
+
+    var fetchedModel,
+        localOptions = {transacting: options.transacting};
+
+    return Model.forge({id: effectedModelId}).fetch(localOptions)
+        .then(function successFetchedModel(_fetchedModel) {
+            fetchedModel = _fetchedModel;
+
+            if (!fetchedModel) {
+                throw new common.errors.NotFoundError({level: 'critical', help: effectedModelId});
+            }
+
+            return Promise.resolve(modelsToAttach)
+                .then(function then(models) {
+                    models = _.map(models, function mapper(model) {
+                        if (model.id) {
+                            return model.id;
+                        } else if (!_.isObject(model)) {
+                            return model.toString();
+                        } else {
+                            return model;
+                        }
+                    });
+
+                    return fetchedModel.related(relation).detach(models, localOptions);
+                });
+        });
+};
+
+module.exports.attach = attach;
+module.exports.detach = detach;

@@ -1,46 +1,52 @@
+'use strict';
+
 // # Post Model
-var _              = require('lodash'),
-    uuid           = require('node-uuid'),
-    Promise        = require('bluebird'),
-    sequence       = require('../utils/sequence'),
-    errors         = require('../errors'),
-    Showdown       = require('showdown-ghost'),
-    converter      = new Showdown.converter({extensions: ['ghostgfm', 'footnotes', 'highlight']}),
+var _ = require('lodash'),
+    uuid = require('uuid'),
+    moment = require('moment'),
+    Promise = require('bluebird'),
+    ObjectId = require('bson-objectid'),
+    sequence = require('../lib/promise/sequence'),
+    common = require('../lib/common'),
+    htmlToText = require('html-to-text'),
     ghostBookshelf = require('./base'),
-    events         = require('../events'),
-    config         = require('../config'),
-    permalinkSetting = '',
-    getPermalinkSetting,
+    config = require('../config'),
+    converters = require('../lib/mobiledoc/converters'),
+    urlService = require('../services/url'),
     Post,
     Posts;
-
-// Stores model permalink format
-
-getPermalinkSetting = function getPermalinkSetting(model, attributes, options) {
-    /*jshint unused:false*/
-
-    // Transactions are used for bulk deletes and imports which don't need this anyway
-    if (options.transacting) {
-        return Promise.resolve();
-    }
-    return ghostBookshelf.model('Settings').findOne({key: 'permalinks'}).then(function then(response) {
-        if (response) {
-            response = response.toJSON(options);
-            permalinkSetting = response.hasOwnProperty('value') ? response.value : '';
-        }
-    });
-};
 
 Post = ghostBookshelf.Model.extend({
 
     tableName: 'posts',
 
-    emitChange: function emitChange(event, usePreviousResourceType) {
+    relationships: ['tags'],
+
+    /**
+     * The base model keeps only the columns, which are defined in the schema.
+     * We have to add the relations on top, otherwise bookshelf-relations
+     * has no access to the nested relations, which should be updated.
+     */
+    permittedAttributes: function permittedAttributes() {
+        let filteredKeys = ghostBookshelf.Model.prototype.permittedAttributes.apply(this, arguments);
+
+        this.relationships.forEach((key) => {
+            filteredKeys.push(key);
+        });
+
+        return filteredKeys;
+    },
+
+    emitChange: function emitChange(event, options) {
+        options = options || {};
+
         var resourceType = this.get('page') ? 'page' : 'post';
-        if (usePreviousResourceType) {
+
+        if (options.usePreviousResourceType) {
             resourceType = this.updated('page') ? 'page' : 'post';
         }
-        events.emit(resourceType + '.' + event, this);
+
+        common.events.emit(resourceType + '.' + event, this, options);
     },
 
     defaults: function defaults() {
@@ -50,118 +56,244 @@ Post = ghostBookshelf.Model.extend({
         };
     },
 
-    initialize: function initialize() {
-        var self = this;
+    /**
+     * We update the tags after the Post was inserted.
+     * We update the tags before the Post was updated, see `onSaving` event.
+     * `onCreated` is called before `onSaved`.
+     */
+    onCreated: function onCreated(model, response, options) {
+        var status = model.get('status');
 
-        ghostBookshelf.Model.prototype.initialize.apply(this, arguments);
+        model.emitChange('added');
 
-        this.on('saved', function onSaved(model, response, options) {
-            return self.updateTags(model, response, options);
-        });
+        if (['published', 'scheduled'].indexOf(status) !== -1) {
+            model.emitChange(status, {importing: options.importing});
+        }
+    },
 
-        // Ensures local copy of permalink setting is kept up to date
-        this.on('fetching', getPermalinkSetting);
-        this.on('fetching:collection', getPermalinkSetting);
+    onUpdated: function onUpdated(model) {
+        model.statusChanging = model.get('status') !== model.updated('status');
+        model.isPublished = model.get('status') === 'published';
+        model.isScheduled = model.get('status') === 'scheduled';
+        model.wasPublished = model.updated('status') === 'published';
+        model.wasScheduled = model.updated('status') === 'scheduled';
+        model.resourceTypeChanging = model.get('page') !== model.updated('page');
+        model.publishedAtHasChanged = model.hasDateChanged('published_at');
+        model.needsReschedule = model.publishedAtHasChanged && model.isScheduled;
 
-        this.on('created', function onCreated(model) {
+        // Handle added and deleted for post -> page or page -> post
+        if (model.resourceTypeChanging) {
+            if (model.wasPublished) {
+                model.emitChange('unpublished', {usePreviousResourceType: true});
+            }
+
+            if (model.wasScheduled) {
+                model.emitChange('unscheduled', {usePreviousResourceType: true});
+            }
+
+            model.emitChange('deleted', {usePreviousResourceType: true});
             model.emitChange('added');
 
-            if (model.get('status') === 'published') {
+            if (model.isPublished) {
                 model.emitChange('published');
             }
-        });
 
-        this.on('updated', function onUpdated(model) {
-            model.statusChanging = model.get('status') !== model.updated('status');
-            model.isPublished = model.get('status') === 'published';
-            model.wasPublished = model.updated('status') === 'published';
-            model.resourceTypeChanging = model.get('page') !== model.updated('page');
-
-            // Handle added and deleted for changing resource
-            if (model.resourceTypeChanging) {
+            if (model.isScheduled) {
+                model.emitChange('scheduled');
+            }
+        } else {
+            if (model.statusChanging) {
+                // CASE: was published before and is now e.q. draft or scheduled
                 if (model.wasPublished) {
-                    model.emitChange('unpublished', true);
+                    model.emitChange('unpublished');
                 }
 
-                model.emitChange('deleted', true);
-                model.emitChange('added');
-
+                // CASE: was draft or scheduled before and is now e.q. published
                 if (model.isPublished) {
                     model.emitChange('published');
                 }
+
+                // CASE: was draft or published before and is now e.q. scheduled
+                if (model.isScheduled) {
+                    model.emitChange('scheduled');
+                }
+
+                // CASE: from scheduled to something
+                if (model.wasScheduled && !model.isScheduled && !model.isPublished) {
+                    model.emitChange('unscheduled');
+                }
             } else {
-                if (model.statusChanging) {
-                    model.emitChange(model.isPublished ? 'published' : 'unpublished');
-                } else {
-                    if (model.isPublished) {
-                        model.emitChange('published.edited');
+                if (model.isPublished) {
+                    model.emitChange('published.edited');
+                }
+
+                if (model.needsReschedule) {
+                    model.emitChange('rescheduled');
+                }
+            }
+
+            // Fire edited if this wasn't a change between resourceType
+            model.emitChange('edited');
+        }
+    },
+
+    onDestroying: function onDestroying(model) {
+        if (model.previous('status') === 'published') {
+            model.emitChange('unpublished');
+        }
+
+        model.emitChange('deleted');
+    },
+
+    onSaving: function onSaving(model, attr, options) {
+        options = options || {};
+
+        var self = this,
+            title,
+            i,
+            // Variables to make the slug checking more readable
+            newTitle = this.get('title'),
+            newStatus = this.get('status'),
+            olderStatus = this.previous('status'),
+            prevTitle = this._previousAttributes.title,
+            prevSlug = this._previousAttributes.slug,
+            publishedAt = this.get('published_at'),
+            publishedAtHasChanged = this.hasDateChanged('published_at', {beforeWrite: true}),
+            mobiledoc = this.get('mobiledoc'),
+            tagsToSave,
+            ops = [];
+
+        // CASE: disallow published -> scheduled
+        // @TODO: remove when we have versioning based on updated_at
+        if (newStatus !== olderStatus && newStatus === 'scheduled' && olderStatus === 'published') {
+            return Promise.reject(new common.errors.ValidationError({
+                message: common.i18n.t('errors.models.post.isAlreadyPublished', {key: 'status'})
+            }));
+        }
+
+        // CASE: both page and post can get scheduled
+        if (newStatus === 'scheduled') {
+            if (!publishedAt) {
+                return Promise.reject(new common.errors.ValidationError({
+                    message: common.i18n.t('errors.models.post.valueCannotBeBlank', {key: 'published_at'})
+                }));
+            } else if (!moment(publishedAt).isValid()) {
+                return Promise.reject(new common.errors.ValidationError({
+                    message: common.i18n.t('errors.models.post.valueCannotBeBlank', {key: 'published_at'})
+                }));
+                // CASE: to schedule/reschedule a post, a minimum diff of x minutes is needed (default configured is 2minutes)
+            } else if (
+                publishedAtHasChanged &&
+                moment(publishedAt).isBefore(moment().add(config.get('times').cannotScheduleAPostBeforeInMinutes, 'minutes')) &&
+                !options.importing
+            ) {
+                return Promise.reject(new common.errors.ValidationError({
+                    message: common.i18n.t('errors.models.post.expectedPublishedAtInFuture', {
+                        cannotScheduleAPostBeforeInMinutes: config.get('times').cannotScheduleAPostBeforeInMinutes
+                    })
+                }));
+            }
+        }
+
+        // CASE: detect lowercase/uppercase tag slugs
+        if (!_.isUndefined(this.get('tags')) && !_.isNull(this.get('tags'))) {
+            tagsToSave = [];
+
+            //  and deduplicate upper/lowercase tags
+            _.each(this.get('tags'), function each(item) {
+                for (i = 0; i < tagsToSave.length; i = i + 1) {
+                    if (tagsToSave[i].name.toLocaleLowerCase() === item.name.toLocaleLowerCase()) {
+                        return;
                     }
                 }
 
-                // Fire edited if this wasn't a change between resourceType
-                model.emitChange('edited');
-            }
-        });
+                tagsToSave.push(item);
+            });
 
-        this.on('destroyed', function onDestroyed(model) {
-            if (model.previous('status') === 'published') {
-                model.emitChange('unpublished');
-            }
+            this.set('tags', tagsToSave);
+        }
 
-            model.emitChange('deleted');
-        });
-    },
+        ghostBookshelf.Model.prototype.onSaving.call(this, model, attr, options);
 
-    saving: function saving(model, attr, options) {
-        var self = this,
-            tagsToCheck,
-            i;
+        if (mobiledoc) {
+            this.set('html', converters.mobiledocConverter.render(JSON.parse(mobiledoc)));
+        }
 
-        options = options || {};
-        // keep tags for 'saved' event and deduplicate upper/lowercase tags
-        tagsToCheck = this.get('tags');
-        this.myTags = [];
-
-        _.each(tagsToCheck, function each(item) {
-            for (i = 0; i < self.myTags.length; i = i + 1) {
-                if (self.myTags[i].name.toLocaleLowerCase() === item.name.toLocaleLowerCase()) {
-                    return;
-                }
-            }
-
-            self.myTags.push(item);
-        });
-
-        ghostBookshelf.Model.prototype.saving.call(this, model, attr, options);
-
-        this.set('html', converter.makeHtml(this.get('markdown')));
+        if (this.hasChanged('html') || !this.get('plaintext')) {
+            this.set('plaintext', htmlToText.fromString(this.get('html'), {
+                wordwrap: 80,
+                ignoreImage: true,
+                hideLinkHrefIfSameAsText: true,
+                preserveNewlines: true,
+                returnDomByDefault: true,
+                uppercaseHeadings: false
+            }));
+        }
 
         // disabling sanitization until we can implement a better version
-        // this.set('title', this.sanitize('title').trim());
-        this.set('title', this.get('title').trim());
+        if (!options.importing) {
+            title = this.get('title') || common.i18n.t('errors.models.post.untitled');
+            this.set('title', _.toString(title).trim());
+        }
 
-        if ((this.hasChanged('status') || !this.get('published_at')) && this.get('status') === 'published') {
-            if (!this.get('published_at')) {
-                this.set('published_at', new Date());
-            }
+        // ### Business logic for published_at and published_by
+        // If the current status is 'published' and published_at is not set, set it to now
+        if (newStatus === 'published' && !publishedAt) {
+            this.set('published_at', new Date());
+        }
 
+        // If the current status is 'published' and the status has just changed ensure published_by is set correctly
+        if (newStatus === 'published' && this.hasChanged('status')) {
             // unless published_by is set and we're importing, set published_by to contextUser
             if (!(this.get('published_by') && options.importing)) {
                 this.set('published_by', this.contextUser(options));
             }
+        } else {
+            // In any other case (except import), `published_by` should not be changed
+            if (this.hasChanged('published_by') && !options.importing) {
+                this.set('published_by', this.previous('published_by'));
+            }
         }
 
-        if (this.hasChanged('slug') || !this.get('slug')) {
-            // Pass the new slug through the generator to strip illegal characters, detect duplicates
-            return ghostBookshelf.Model.generateSlug(Post, this.get('slug') || this.get('title'),
-                    {status: 'all', transacting: options.transacting})
-                .then(function then(slug) {
-                    self.set({slug: slug});
-                });
+        // If a title is set, not the same as the old title, a draft post, and has never been published
+        if (prevTitle !== undefined && newTitle !== prevTitle && newStatus === 'draft' && !publishedAt) {
+            ops.push(function updateSlug() {
+                // Pass the new slug through the generator to strip illegal characters, detect duplicates
+                return ghostBookshelf.Model.generateSlug(Post, self.get('title'),
+                    {status: 'all', transacting: options.transacting, importing: options.importing})
+                    .then(function then(slug) {
+                        // After the new slug is found, do another generate for the old title to compare it to the old slug
+                        return ghostBookshelf.Model.generateSlug(Post, prevTitle,
+                            {status: 'all', transacting: options.transacting, importing: options.importing}
+                        ).then(function then(prevTitleSlug) {
+                            // If the old slug is the same as the slug that was generated from the old title
+                            // then set a new slug. If it is not the same, means was set by the user
+                            if (prevTitleSlug === prevSlug) {
+                                self.set({slug: slug});
+                            }
+                        });
+                    });
+            });
+        } else {
+            ops.push(function updateSlug() {
+                // If any of the attributes above were false, set initial slug and check to see if slug was changed by the user
+                if (self.hasChanged('slug') || !self.get('slug')) {
+                    // Pass the new slug through the generator to strip illegal characters, detect duplicates
+                    return ghostBookshelf.Model.generateSlug(Post, self.get('slug') || self.get('title'),
+                        {status: 'all', transacting: options.transacting, importing: options.importing})
+                        .then(function then(slug) {
+                            self.set({slug: slug});
+                        });
+                }
+
+                return Promise.resolve();
+            });
         }
+
+        return sequence(ops);
     },
 
-    creating: function creating(model, attr, options) {
+    onCreating: function onCreating(model, attr, options) {
         options = options || {};
 
         // set any dynamic default properties
@@ -169,74 +301,7 @@ Post = ghostBookshelf.Model.extend({
             this.set('author_id', this.contextUser(options));
         }
 
-        ghostBookshelf.Model.prototype.creating.call(this, model, attr, options);
-    },
-
-    /**
-     * ### updateTags
-     * Update tags that are attached to a post.  Create any tags that don't already exist.
-     * @param {Object} savedModel
-     * @param {Object} response
-     * @param {Object} options
-     * @return {Promise(ghostBookshelf.Models.Post)} Updated Post model
-     */
-    updateTags: function updateTags(savedModel, response, options) {
-        var self = this;
-        options = options || {};
-
-        if (!this.myTags) {
-            return;
-        }
-
-        return Post.forge({id: savedModel.id}).fetch({withRelated: ['tags'], transacting: options.transacting}).then(function then(post) {
-            var tagOps = [];
-
-            // remove all existing tags from the post
-            // _.omit(options, 'query') is a fix for using bookshelf 0.6.8
-            // (https://github.com/tgriesser/bookshelf/issues/294)
-            tagOps.push(post.tags().detach(null, _.omit(options, 'query')));
-
-            if (_.isEmpty(self.myTags)) {
-                return Promise.all(tagOps);
-            }
-
-            return ghostBookshelf.collection('Tags').forge().query('whereIn', 'name', _.pluck(self.myTags, 'name')).fetch(options).then(function then(existingTags) {
-                var doNotExist = [],
-                    sequenceTasks = [];
-
-                existingTags = existingTags.toJSON(options);
-
-                doNotExist = _.reject(self.myTags, function (tag) {
-                    return _.any(existingTags, function (existingTag) {
-                        return existingTag.name === tag.name;
-                    });
-                });
-
-                // Create tags that don't exist and attach to post
-                _.each(doNotExist, function (tag) {
-                    var createAndAttachOperation = function createAndAttachOperation() {
-                        return ghostBookshelf.model('Tag').add({name: tag.name}, options).then(function then(createdTag) {
-                            // _.omit(options, 'query') is a fix for using bookshelf 0.6.8
-                            // (https://github.com/tgriesser/bookshelf/issues/294)
-                            return post.tags().attach(createdTag.id, _.omit(options, 'query'));
-                        });
-                    };
-
-                    sequenceTasks.push(createAndAttachOperation);
-                });
-
-                tagOps = tagOps.concat(sequence(sequenceTasks));
-
-                // attach the tags that already existed
-                _.each(existingTags, function (tag) {
-                    // _.omit(options, 'query') is a fix for using bookshelf 0.6.8
-                    // (https://github.com/tgriesser/bookshelf/issues/294)
-                    tagOps.push(post.tags().attach(tag.id, _.omit(options, 'query')));
-                });
-
-                return Promise.all(tagOps);
-            });
-        });
+        ghostBookshelf.Model.prototype.onCreating.call(this, model, attr, options);
     },
 
     // Relations
@@ -257,44 +322,97 @@ Post = ghostBookshelf.Model.extend({
     },
 
     tags: function tags() {
-        return this.belongsToMany('Tag');
+        return this.belongsToMany('Tag').withPivot('sort_order').query('orderBy', 'sort_order', 'ASC');
     },
 
     fields: function fields() {
         return this.morphMany('AppField', 'relatable');
     },
 
-    toJSON: function toJSON(options) {
-        var attrs = ghostBookshelf.Model.prototype.toJSON.call(this, options);
+    defaultColumnsToFetch: function defaultColumnsToFetch() {
+        return ['id', 'published_at', 'slug', 'author_id'];
+    },
+    /**
+     * If the `formats` option is not used, we return `html` be default.
+     * Otherwise we return what is requested e.g. `?formats=mobiledoc,plaintext`
+     */
+    formatsToJSON: function formatsToJSON(attrs, options) {
+        var defaultFormats = ['html'],
+            formatsToKeep = options.formats || defaultFormats;
 
-        attrs.author = attrs.author || attrs.author_id;
-        attrs.url = config.urlPathForPost(attrs, permalinkSetting);
-        delete attrs.author_id;
+        // Iterate over all known formats, and if they are not in the keep list, remove them
+        _.each(Post.allowedFormats, function (format) {
+            if (formatsToKeep.indexOf(format) === -1) {
+                delete attrs[format];
+            }
+        });
 
         return attrs;
+    },
+
+    toJSON: function toJSON(options) {
+        options = options || {};
+
+        var attrs = ghostBookshelf.Model.prototype.toJSON.call(this, options),
+            oldPostId = attrs.amp,
+            commentId;
+
+        attrs = this.formatsToJSON(attrs, options);
+
+        if (!options.columns || (options.columns && options.columns.indexOf('author') > -1)) {
+            attrs.author = attrs.author || attrs.author_id;
+            delete attrs.author_id;
+        }
+        // If the current column settings allow it...
+        if (!options.columns || (options.columns && options.columns.indexOf('primary_tag') > -1)) {
+            // ... attach a computed property of primary_tag which is the first tag if it is public, else null
+            if (attrs.tags && attrs.tags.length > 0 && attrs.tags[0].visibility === 'public') {
+                attrs.primary_tag = attrs.tags[0];
+            } else {
+                attrs.primary_tag = null;
+            }
+        }
+
+        if (!options.columns || (options.columns && options.columns.indexOf('url') > -1)) {
+            attrs.url = urlService.utils.urlPathForPost(attrs);
+        }
+
+        if (oldPostId) {
+            // CASE: You create a new post on 1.X, you enable disqus. You export your content, you import your content on a different instance.
+            // This time, the importer remembers your old post id in the amp field as ObjectId.
+            if (ObjectId.isValid(oldPostId)) {
+                commentId = oldPostId;
+            } else {
+                oldPostId = Number(oldPostId);
+
+                // CASE: You import an old post id from your LTS blog. Stored in the amp field.
+                if (!isNaN(oldPostId)) {
+                    commentId = oldPostId.toString();
+                } else {
+                    commentId = attrs.id;
+                }
+            }
+        } else {
+            commentId = attrs.id;
+        }
+
+        // NOTE: we remember the old post id because of disqus
+        attrs.comment_id = commentId;
+
+        return attrs;
+    },
+    enforcedFilters: function enforcedFilters(options) {
+        return options.context && options.context.public ? 'status:published' : null;
+    },
+    defaultFilters: function defaultFilters(options) {
+        if (options.context && options.context.internal) {
+            return null;
+        }
+
+        return options.context && options.context.public ? 'page:false' : 'page:false+status:published';
     }
 }, {
-    setupFilters: function setupFilters(options) {
-        var filterObjects = {};
-        // Deliberately switch from singular 'tag' to 'tags' and 'role' to 'roles' here
-        // TODO: make this consistent
-        if (options.tag !== undefined) {
-            filterObjects.tags = ghostBookshelf.model('Tag').forge({slug: options.tag});
-        }
-        if (options.author !== undefined) {
-            filterObjects.author = ghostBookshelf.model('User').forge({slug: options.author});
-        }
-
-        return filterObjects;
-    },
-
-    findPageDefaultOptions: function findPageDefaultOptions() {
-        return {
-            staticPages: false, // include static pages
-            status: 'published',
-            where: {}
-        };
-    },
+    allowedFormats: ['mobiledoc', 'html', 'plaintext', 'amp'],
 
     orderDefaultOptions: function orderDefaultOptions() {
         return {
@@ -305,51 +423,73 @@ Post = ghostBookshelf.Model.extend({
         };
     },
 
-    processOptions: function processOptions(itemCollection, options) {
-        // Step 4: Setup filters (where clauses)
-        if (options.staticPages !== 'all') {
-            // convert string true/false to boolean
-            if (!_.isBoolean(options.staticPages)) {
-                options.staticPages = _.contains(['true', '1'], options.staticPages);
-            }
-            options.where.page = options.staticPages;
+    orderDefaultRaw: function () {
+        return '' +
+            'CASE WHEN posts.status = \'scheduled\' THEN 1 ' +
+            'WHEN posts.status = \'draft\' THEN 2 ' +
+            'ELSE 3 END ASC,' +
+            'posts.published_at DESC,' +
+            'posts.updated_at DESC,' +
+            'posts.id DESC';
+    },
+
+    /**
+     * @deprecated in favour of filter
+     */
+    processOptions: function processOptions(options) {
+        if (!options.staticPages && !options.status) {
+            return options;
         }
 
-        if (options.featured) {
+        // This is the only place that 'options.where' is set now
+        options.where = {statements: []};
+
+        // Step 4: Setup filters (where clauses)
+        if (options.staticPages && options.staticPages !== 'all') {
             // convert string true/false to boolean
-            if (!_.isBoolean(options.featured)) {
-                options.featured = _.contains(['true', '1'], options.featured);
+            if (!_.isBoolean(options.staticPages)) {
+                options.staticPages = _.includes(['true', '1'], options.staticPages);
             }
-            options.where.featured = options.featured;
+            options.where.statements.push({prop: 'page', op: '=', value: options.staticPages});
+            delete options.staticPages;
+        } else if (options.staticPages === 'all') {
+            options.where.statements.push({prop: 'page', op: 'IN', value: [true, false]});
+            delete options.staticPages;
         }
 
         // Unless `all` is passed as an option, filter on
         // the status provided.
-        if (options.status !== 'all') {
+        if (options.status && options.status !== 'all') {
             // make sure that status is valid
-            options.status = _.contains(['published', 'draft'], options.status) ? options.status : 'published';
-            options.where.status = options.status;
+            options.status = _.includes(['published', 'draft', 'scheduled'], options.status) ? options.status : 'published';
+            options.where.statements.push({prop: 'status', op: '=', value: options.status});
+            delete options.status;
+        } else if (options.status === 'all') {
+            options.where.statements.push({prop: 'status', op: 'IN', value: ['published', 'draft', 'scheduled']});
+            delete options.status;
         }
 
         return options;
     },
 
     /**
-    * Returns an array of keys permitted in a method's `options` hash, depending on the current method.
-    * @param {String} methodName The name of the method to check valid options for.
-    * @return {Array} Keys allowed in the `options` hash of the model's method.
-    */
+     * Returns an array of keys permitted in a method's `options` hash, depending on the current method.
+     * @param {String} methodName The name of the method to check valid options for.
+     * @return {Array} Keys allowed in the `options` hash of the model's method.
+     */
     permittedOptions: function permittedOptions(methodName) {
         var options = ghostBookshelf.Model.permittedOptions(),
 
             // whitelists for the `options` hash argument on methods, by method name.
             // these are the only options that can be passed to Bookshelf / Knex.
             validOptions = {
-                findAll: ['withRelated'],
-                findOne: ['importing', 'withRelated'],
-                findPage: ['page', 'limit', 'status', 'staticPages', 'featured'],
-                add: ['importing']
+                findOne: ['columns', 'importing', 'withRelated', 'require'],
+                findPage: ['page', 'limit', 'columns', 'filter', 'order', 'status', 'staticPages'],
+                findAll: ['columns', 'filter']
             };
+
+        // The post model additionally supports having a formats option
+        options.push('formats');
 
         if (validOptions[methodName]) {
             options = options.concat(validOptions[methodName]);
@@ -359,37 +499,20 @@ Post = ghostBookshelf.Model.extend({
     },
 
     /**
-     * Filters potentially unsafe model attributes, so you can pass them to Bookshelf / Knex.
+     * Manually add 'tags' attribute since it's not in the schema and call parent.
+     *
      * @param {Object} data Has keys representing the model's attributes/fields in the database.
      * @return {Object} The filtered results of the passed in data, containing only what's allowed in the schema.
      */
     filterData: function filterData(data) {
-        var permittedAttributes = this.prototype.permittedAttributes(),
-            filteredData;
+        var filteredData = ghostBookshelf.Model.filterData.apply(this, arguments),
+            extraData = _.pick(data, this.prototype.relationships);
 
-        // manually add 'tags' attribute since it's not in the schema
-        permittedAttributes.push('tags');
-
-        filteredData = _.pick(data, permittedAttributes);
-
+        _.merge(filteredData, extraData);
         return filteredData;
     },
 
     // ## Model Data Functions
-
-    /**
-     * ### Find All
-     *
-     * @param {Object} options
-     * @returns {*}
-     */
-    findAll:  function findAll(options) {
-        options = options || {};
-
-        // fetch relations passed to options.include
-        options.withRelated = _.union(options.withRelated, options.include);
-        return ghostBookshelf.Model.findAll.call(this, options);
-    },
 
     /**
      * ### Find One
@@ -399,9 +522,6 @@ Post = ghostBookshelf.Model.extend({
     findOne: function findOne(data, options) {
         options = options || {};
 
-        var withNext = _.contains(options.include, 'next'),
-            withPrev = _.contains(options.include, 'previous');
-
         data = _.defaults(data || {}, {
             status: 'published'
         });
@@ -410,71 +530,45 @@ Post = ghostBookshelf.Model.extend({
             delete data.status;
         }
 
-        // Add related objects, excluding next and previous as they are not real db objects
-        options.withRelated = _.union(options.withRelated, _.pull([].concat(options.include), 'next', 'previous'));
+        options.withRelated = _.union(options.withRelated, options.include);
 
-        return ghostBookshelf.Model.findOne.call(this, data, options).then(function then(post) {
-            if ((withNext || withPrev) && post && !post.page) {
-                var postData = post.toJSON(options),
-                    publishedAt = postData.published_at,
-                    prev,
-                    next;
-
-                if (withNext) {
-                    next = Post.forge().query(function queryBuilder(qb) {
-                        qb.where('status', '=', 'published')
-                            .andWhere('page', '=', 0)
-                            .andWhere('published_at', '>', publishedAt)
-                            .orderBy('published_at', 'asc')
-                            .limit(1);
-                    }).fetch();
-                }
-
-                if (withPrev) {
-                    prev = Post.forge().query(function queryBuilder(qb) {
-                        qb.where('status', '=', 'published')
-                            .andWhere('page', '=', 0)
-                            .andWhere('published_at', '<', publishedAt)
-                            .orderBy('published_at', 'desc')
-                            .limit(1);
-                    }).fetch();
-                }
-
-                return Promise.join(next, prev)
-                    .then(function then(nextAndPrev) {
-                        if (nextAndPrev[0]) {
-                            post.relations.next = nextAndPrev[0];
-                        }
-                        if (nextAndPrev[1]) {
-                            post.relations.previous = nextAndPrev[1];
-                        }
-                        return post;
-                    });
-            }
-
-            return post;
-        });
+        return ghostBookshelf.Model.findOne.call(this, data, options);
     },
 
     /**
      * ### Edit
+     * Fetches and saves to Post. See model.Base.edit
+     *
      * @extends ghostBookshelf.Model.edit to handle returning the full object and manage _updatedAttributes
      * **See:** [ghostBookshelf.Model.edit](base.js.html#edit)
      */
     edit: function edit(data, options) {
-        var self = this;
-        options = options || {};
+        let opts = _.cloneDeep(options || {});
 
-        return ghostBookshelf.Model.edit.call(this, data, options).then(function then(post) {
-            return self.findOne({status: 'all', id: options.id}, options)
-                .then(function then(found) {
-                    if (found) {
-                        // Pass along the updated attributes for checking status changes
-                        found._updatedAttributes = post._updatedAttributes;
-                        return found;
-                    }
+        const editPost = () => {
+            opts.forUpdate = true;
+
+            return ghostBookshelf.Model.edit.call(this, data, opts)
+                .then((post) => {
+                    return this.findOne({status: 'all', id: opts.id}, opts)
+                        .then((found) => {
+                            if (found) {
+                                // Pass along the updated attributes for checking status changes
+                                found._updatedAttributes = post._updatedAttributes;
+                                return found;
+                            }
+                        });
                 });
-        });
+        };
+
+        if (!opts.transacting) {
+            return ghostBookshelf.transaction((transacting) => {
+                opts.transacting = transacting;
+                return editPost();
+            });
+        }
+
+        return editPost();
     },
 
     /**
@@ -483,28 +577,41 @@ Post = ghostBookshelf.Model.extend({
      * **See:** [ghostBookshelf.Model.add](base.js.html#add)
      */
     add: function add(data, options) {
-        var self = this;
-        options = options || {};
+        let opts = _.cloneDeep(options || {});
 
-        return ghostBookshelf.Model.add.call(this, data, options).then(function then(post) {
-            return self.findOne({status: 'all', id: post.id}, options);
+        const addPost = (() => {
+            return ghostBookshelf.Model.add.call(this, data, opts)
+                .then((post) => {
+                    return this.findOne({status: 'all', id: post.id}, opts);
+                });
         });
+
+        if (!opts.transacting) {
+            return ghostBookshelf.transaction((transacting) => {
+                opts.transacting = transacting;
+
+                return addPost();
+            });
+        }
+
+        return addPost();
     },
 
-    /**
-     * ### Destroy
-     * @extends ghostBookshelf.Model.destroy to clean up tag relations
-     * **See:** [ghostBookshelf.Model.destroy](base.js.html#destroy)
-     */
     destroy: function destroy(options) {
-        var id = options.id;
-        options = this.filterOptions(options, 'destroy');
+        let opts = _.cloneDeep(options || {});
 
-        return this.forge({id: id}).fetch({withRelated: ['tags']}).then(function destroyTags(post) {
-            return post.related('tags').detach().then(function destroyPosts() {
-                return post.destroy(options);
+        const destroyPost = () => {
+            return ghostBookshelf.Model.destroy.call(this, opts);
+        };
+
+        if (!opts.transacting) {
+            return ghostBookshelf.transaction((transacting) => {
+                opts.transacting = transacting;
+                return destroyPost();
             });
-        });
+        }
+
+        return destroyPost();
     },
 
     /**
@@ -512,65 +619,124 @@ Post = ghostBookshelf.Model.extend({
      * @param  {[type]} options has context and id. Context is the user doing the destroy, id is the user to destroy
      */
     destroyByAuthor: function destroyByAuthor(options) {
-        var postCollection = Posts.forge(),
-            authorId = options.id;
+        let opts = _.cloneDeep(options || {});
 
-        options = this.filterOptions(options, 'destroyByAuthor');
-        if (authorId) {
-            return postCollection.query('where', 'author_id', '=', authorId).fetch(options).then(function destroyTags(results) {
-                return Promise.map(results.models, function mapper(post) {
-                    return post.related('tags').detach(null, options).then(function destroyPosts() {
-                        return post.destroy(options);
-                    });
-                });
-            }, function (error) {
-                return Promise.reject(new errors.InternalServerError(error.message || error));
+        let postCollection = Posts.forge(),
+            authorId = opts.id;
+
+        opts = this.filterOptions(opts, 'destroyByAuthor');
+
+        if (!authorId) {
+            throw new common.errors.NotFoundError({
+                message: common.i18n.t('errors.models.post.noUserFound')
             });
         }
-        return Promise.reject(new errors.NotFoundError('No user found'));
+
+        const destroyPost = (() => {
+            return postCollection
+                .query('where', 'author_id', '=', authorId)
+                .fetch(opts)
+                .call('invokeThen', 'destroy', opts)
+                .catch((err) => {
+                    throw new common.errors.GhostError({err: err});
+                });
+        });
+
+        if (!opts.transacting) {
+            return ghostBookshelf.transaction((transacting) => {
+                opts.transacting = transacting;
+                return destroyPost();
+            });
+        }
+
+        return destroyPost();
     },
 
-    permissible: function permissible(postModelOrId, action, context, loadedPermissions, hasUserPermission, hasAppPermission) {
+    permissible: function permissible(postModelOrId, action, context, unsafeAttrs, loadedPermissions, hasUserPermission, hasAppPermission) {
         var self = this,
             postModel = postModelOrId,
-            origArgs;
+            result = {},
+            origArgs, isContributor, isAuthor, isEdit, isAdd, isDestroy;
 
         // If we passed in an id instead of a model, get the model
         // then check the permissions
         if (_.isNumber(postModelOrId) || _.isString(postModelOrId)) {
             // Grab the original args without the first one
             origArgs = _.toArray(arguments).slice(1);
+
             // Get the actual post model
             return this.findOne({id: postModelOrId, status: 'all'}).then(function then(foundPostModel) {
                 // Build up the original args but substitute with actual model
                 var newArgs = [foundPostModel].concat(origArgs);
 
                 return self.permissible.apply(self, newArgs);
-            }, errors.logAndThrowError);
+            });
         }
 
-        if (postModel) {
-            // If this is the author of the post, allow it.
-            hasUserPermission = hasUserPermission || context.user === postModel.get('author_id');
+        function isChanging(attr) {
+            return unsafeAttrs[attr] && unsafeAttrs[attr] !== postModel.get(attr);
+        }
+
+        function isOwner() {
+            return unsafeAttrs.author_id && unsafeAttrs.author_id === context.user;
+        }
+
+        function isCurrentOwner() {
+            return context.user === postModel.get('author_id');
+        }
+
+        function isPublished() {
+            return unsafeAttrs.status && unsafeAttrs.status !== 'draft';
+        }
+
+        function isDraft() {
+            return postModel.get('status') === 'draft';
+        }
+
+        isContributor = loadedPermissions.user && _.some(loadedPermissions.user.roles, {name: 'Contributor'});
+        isAuthor = loadedPermissions.user && _.some(loadedPermissions.user.roles, {name: 'Author'});
+        isEdit = (action === 'edit');
+        isAdd = (action === 'add');
+        isDestroy = (action === 'destroy');
+
+        if (isContributor && isEdit) {
+            // Only allow contributor edit if neither status or author id are changing, and the post is a draft post
+            hasUserPermission = !isChanging('status') && !isChanging('author_id') && isDraft() && isCurrentOwner();
+        } else if (isContributor && isAdd) {
+            // If adding, make sure it's a draft post and has the correct ownership
+            hasUserPermission = !isPublished() && isOwner();
+        } else if (isContributor && isDestroy) {
+            // If destroying, only allow contributor to destroy their own draft posts
+            hasUserPermission = isCurrentOwner() && isDraft();
+        } else if (isAuthor && isEdit) {
+            // Don't allow author to change author ids
+            hasUserPermission = isCurrentOwner() && !isChanging('author_id');
+        } else if (isAuthor && isAdd) {
+            // Make sure new post is authored by the current user
+            hasUserPermission = isOwner();
+        } else if (postModel) {
+            hasUserPermission = hasUserPermission || isCurrentOwner();
+        }
+
+        if (isContributor) {
+            // Note: at the moment primary_tag is a computed field,
+            // meaning we don't add it to this list. However, if the primary_tag
+            // ever becomes a db field rather than a computed field, add it to this list
+            //
+            // TODO: once contribitors are able to edit existing tags, this can be removed
+            result.excludedAttrs = ['tags'];
         }
 
         if (hasUserPermission && hasAppPermission) {
-            return Promise.resolve();
+            return Promise.resolve(result);
         }
 
-        return Promise.reject();
+        return Promise.reject(new common.errors.NoPermissionError({message: common.i18n.t('errors.models.post.notEnoughPermission')}));
     }
 });
 
 Posts = ghostBookshelf.Collection.extend({
-    model: Post,
-
-    initialize: function initialize() {
-        ghostBookshelf.Collection.prototype.initialize.apply(this, arguments);
-
-        // Ensures local copy of permalink setting is kept up to date
-        this.on('fetching', getPermalinkSetting);
-    }
+    model: Post
 });
 
 module.exports = {

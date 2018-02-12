@@ -1,7 +1,6 @@
-var Promise         = require('bluebird'),
-    ghostBookshelf  = require('./index'),
-    errors          = require('../../errors'),
-
+var Promise = require('bluebird'),
+    ghostBookshelf = require('./index'),
+    common = require('../../lib/common'),
     Basetoken;
 
 Basetoken = ghostBookshelf.Model.extend({
@@ -15,29 +14,23 @@ Basetoken = ghostBookshelf.Model.extend({
     },
 
     // override for base function since we don't have
-    // a created_by field for sessions
-    creating: function creating(newObj, attr, options) {
-        /*jshint unused:false*/
-    },
-
-    // override for base function since we don't have
     // a updated_by field for sessions
-    saving: function saving(newObj, attr, options) {
-        /*jshint unused:false*/
+    onSaving: function onSaving() {
         // Remove any properties which don't belong on the model
         this.attributes = this.pick(this.permittedAttributes());
     }
 
 }, {
-    destroyAllExpired:  function destroyAllExpired(options) {
+    destroyAllExpired: function destroyAllExpired(options) {
         options = this.filterOptions(options, 'destroyAll');
         return ghostBookshelf.Collection.forge([], {model: this})
             .query('where', 'expires', '<', Date.now())
             .fetch(options)
             .then(function then(collection) {
-                collection.invokeThen('destroy', options);
+                return collection.invokeThen('destroy', options);
             });
     },
+
     /**
      * ### destroyByUser
      * @param  {[type]} options has context and id. Context is the user doing the destroy, id is the user to destroy
@@ -52,11 +45,11 @@ Basetoken = ghostBookshelf.Model.extend({
                 .query('where', 'user_id', '=', userId)
                 .fetch(options)
                 .then(function then(collection) {
-                    collection.invokeThen('destroy', options);
+                    return collection.invokeThen('destroy', options);
                 });
         }
 
-        return Promise.reject(new errors.NotFoundError('No user found'));
+        return Promise.reject(new common.errors.NotFoundError({message: common.i18n.t('errors.models.base.token.noUserFound')}));
     },
 
     /**
@@ -67,17 +60,14 @@ Basetoken = ghostBookshelf.Model.extend({
         var token = options.token;
 
         options = this.filterOptions(options, 'destroyByUser');
+        options.require = true;
 
-        if (token) {
-            return ghostBookshelf.Collection.forge([], {model: this})
-                .query('where', 'token', '=', token)
-                .fetch(options)
-                .then(function then(collection) {
-                    collection.invokeThen('destroy', options);
-                });
-        }
-
-        return Promise.reject(new errors.NotFoundError('Token not found'));
+        return this.forge()
+            .query('where', 'token', '=', token)
+            .fetch(options)
+            .then(function then(model) {
+                return model.destroy(options);
+            });
     }
 });
 

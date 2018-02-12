@@ -5,11 +5,10 @@ var ghostBookshelf = require('./base'),
 App = ghostBookshelf.Model.extend({
     tableName: 'apps',
 
-    saving: function saving(newPage, attr, options) {
-        /*jshint unused:false*/
+    onSaving: function onSaving(newPage, attr, options) {
         var self = this;
 
-        ghostBookshelf.Model.prototype.saving.apply(this, arguments);
+        ghostBookshelf.Model.prototype.onSaving.apply(this, arguments);
 
         if (this.hasChanged('slug') || !this.get('slug')) {
             // Pass the new slug through the generator to strip illegal characters, detect duplicates

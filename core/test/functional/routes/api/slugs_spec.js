@@ -1,40 +1,32 @@
-/*global describe, it, before, after */
-/*jshint expr:true*/
-var testUtils     = require('../../../utils'),
-    should        = require('should'),
-    supertest     = require('supertest'),
-
-    ghost         = require('../../../../../core'),
-
+var should = require('should'),
+    supertest = require('supertest'),
+    testUtils = require('../../../utils'),
+    config = require('../../../../../core/server/config'),
+    ghost = testUtils.startGhost,
     request;
 
 describe('Slug API', function () {
-    var accesstoken = '';
+    var accesstoken = '', ghostServer;
 
-    before(function (done) {
-        // starting ghost automatically populates the db
-        // TODO: prevent db init, and manage bringing up the DB with fixtures ourselves
-        ghost().then(function (ghostServer) {
-            request = supertest.agent(ghostServer.rootApp);
-        }).then(function () {
-            return testUtils.doAuth(request);
-        }).then(function (token) {
-            accesstoken = token;
-            done();
-        }).catch(done);
-    });
-
-    after(function (done) {
-        testUtils.clearData().then(function () {
-            done();
-        }).catch(done);
+    before(function () {
+        return ghost()
+            .then(function (_ghostServer) {
+                ghostServer = _ghostServer;
+                request = supertest.agent(config.get('url'));
+            })
+            .then(function () {
+                return testUtils.doAuth(request);
+            })
+            .then(function (token) {
+                accesstoken = token;
+            });
     });
 
     it('should be able to get a post slug', function (done) {
         request.get(testUtils.API.getApiQuery('slugs/post/a post title/'))
             .set('Authorization', 'Bearer ' + accesstoken)
             .expect('Content-Type', /json/)
-            .expect('Cache-Control', testUtils.cacheRules['private'])
+            .expect('Cache-Control', testUtils.cacheRules.private)
             .expect(200)
             .end(function (err, res) {
                 if (err) {
@@ -43,8 +35,8 @@ describe('Slug API', function () {
 
                 should.not.exist(res.headers['x-cache-invalidate']);
                 var jsonResponse = res.body;
-                jsonResponse.should.exist;
-                jsonResponse.slugs.should.exist;
+                should.exist(jsonResponse);
+                should.exist(jsonResponse.slugs);
                 jsonResponse.slugs.should.have.length(1);
                 testUtils.API.checkResponse(jsonResponse.slugs[0], 'slug');
                 jsonResponse.slugs[0].slug.should.equal('a-post-title');
@@ -57,7 +49,7 @@ describe('Slug API', function () {
         request.get(testUtils.API.getApiQuery('slugs/post/atag/'))
             .set('Authorization', 'Bearer ' + accesstoken)
             .expect('Content-Type', /json/)
-            .expect('Cache-Control', testUtils.cacheRules['private'])
+            .expect('Cache-Control', testUtils.cacheRules.private)
             .expect(200)
             .end(function (err, res) {
                 if (err) {
@@ -66,8 +58,8 @@ describe('Slug API', function () {
 
                 should.not.exist(res.headers['x-cache-invalidate']);
                 var jsonResponse = res.body;
-                jsonResponse.should.exist;
-                jsonResponse.slugs.should.exist;
+                should.exist(jsonResponse);
+                should.exist(jsonResponse.slugs);
                 jsonResponse.slugs.should.have.length(1);
                 testUtils.API.checkResponse(jsonResponse.slugs[0], 'slug');
                 jsonResponse.slugs[0].slug.should.equal('atag');
@@ -80,7 +72,7 @@ describe('Slug API', function () {
         request.get(testUtils.API.getApiQuery('slugs/user/user name/'))
             .set('Authorization', 'Bearer ' + accesstoken)
             .expect('Content-Type', /json/)
-            .expect('Cache-Control', testUtils.cacheRules['private'])
+            .expect('Cache-Control', testUtils.cacheRules.private)
             .expect(200)
             .end(function (err, res) {
                 if (err) {
@@ -89,8 +81,8 @@ describe('Slug API', function () {
 
                 should.not.exist(res.headers['x-cache-invalidate']);
                 var jsonResponse = res.body;
-                jsonResponse.should.exist;
-                jsonResponse.slugs.should.exist;
+                should.exist(jsonResponse);
+                should.exist(jsonResponse.slugs);
                 jsonResponse.slugs.should.have.length(1);
                 testUtils.API.checkResponse(jsonResponse.slugs[0], 'slug');
                 jsonResponse.slugs[0].slug.should.equal('user-name');
@@ -103,7 +95,7 @@ describe('Slug API', function () {
         request.get(testUtils.API.getApiQuery('slugs/app/cool app/'))
             .set('Authorization', 'Bearer ' + accesstoken)
             .expect('Content-Type', /json/)
-            .expect('Cache-Control', testUtils.cacheRules['private'])
+            .expect('Cache-Control', testUtils.cacheRules.private)
             .expect(200)
             .end(function (err, res) {
                 if (err) {
@@ -112,8 +104,8 @@ describe('Slug API', function () {
 
                 should.not.exist(res.headers['x-cache-invalidate']);
                 var jsonResponse = res.body;
-                jsonResponse.should.exist;
-                jsonResponse.slugs.should.exist;
+                should.exist(jsonResponse);
+                should.exist(jsonResponse.slugs);
                 jsonResponse.slugs.should.have.length(1);
                 testUtils.API.checkResponse(jsonResponse.slugs[0], 'slug');
                 jsonResponse.slugs[0].slug.should.equal('cool-app');
@@ -125,8 +117,9 @@ describe('Slug API', function () {
     it('should not be able to get a slug for an unknown type', function (done) {
         request.get(testUtils.API.getApiQuery('slugs/unknown/who knows/'))
             .set('Authorization', 'Bearer ' + accesstoken)
+            .set('Accept', 'application/json')
             .expect('Content-Type', /json/)
-            .expect('Cache-Control', testUtils.cacheRules['private'])
+            .expect('Cache-Control', testUtils.cacheRules.private)
             .expect(400)
             .end(function (err, res) {
                 if (err) {
@@ -134,7 +127,7 @@ describe('Slug API', function () {
                 }
 
                 var jsonResponse = res.body;
-                jsonResponse.should.not.exist;
+                should.exist(jsonResponse.errors);
 
                 done();
             });
