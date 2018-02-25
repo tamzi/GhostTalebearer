@@ -47,6 +47,7 @@ var Promise = require('bluebird'),
     login,
     togglePermalinks,
     startGhost,
+    configureGhost,
 
     initFixtures,
     initData,
@@ -129,7 +130,7 @@ fixtures = {
         });
     },
 
-    insertMorePosts: function insertMorePosts(max) {
+    insertExtraPosts: function insertExtraPosts(max) {
         var lang,
             status,
             posts = [],
@@ -159,7 +160,11 @@ fixtures = {
         }));
     },
 
-    insertMoreTags: function insertMoreTags(max) {
+    insertTags: function insertTags() {
+        return db.knex('tags').insert(DataGenerator.forKnex.tags);
+    },
+
+    insertExtraTags: function insertExtraTags(max) {
         max = max || 50;
         var tags = [],
             tagName,
@@ -177,7 +182,7 @@ fixtures = {
         }));
     },
 
-    insertMorePostsTags: function insertMorePostsTags(max) {
+    insertExtraPostsTags: function insertExtraPostsTags(max) {
         max = max || 50;
 
         return Promise.all([
@@ -498,8 +503,11 @@ toDoList = {
     'posts:mu': function insertMultiAuthorPosts() {
         return fixtures.insertMultiAuthorPosts();
     },
-    tags: function insertMoreTags() {
-        return fixtures.insertMoreTags();
+    tags: function insertTags() {
+        return fixtures.insertTags();
+    },
+    'tags:extra': function insertExtraTags() {
+        return fixtures.insertExtraTags();
     },
     apps: function insertApps() {
         return fixtures.insertApps();
@@ -514,7 +522,7 @@ toDoList = {
     'users:no-owner': function createUsersWithoutOwner() {
         return fixtures.createUsersWithoutOwner();
     },
-    users: function createExtraUsers() {
+    'users:extra': function createExtraUsers() {
         return fixtures.createExtraUsers();
     },
     'user-token': function createTokensForUser(index) {
@@ -918,8 +926,28 @@ startGhost = function startGhost(options) {
         });
 };
 
+/**
+ * Minimal configuration to start integration/unit tests.
+ */
+configureGhost = function configureGhost(sandbox) {
+    models.init();
+
+    const cacheStub = sandbox.stub(SettingsCache, 'get');
+
+    cacheStub.withArgs('active_theme').returns('casper');
+    cacheStub.withArgs('active_timezone').returns('Etc/UTC');
+    cacheStub.withArgs('permalinks').returns('/:slug/');
+
+    configUtils.set('paths:contentPath', path.join(__dirname, 'fixtures'));
+
+    configUtils.set('times:getImageSizeTimeoutInMS', 1);
+
+    return themes.init();
+};
+
 module.exports = {
     startGhost: startGhost,
+    configureGhost: configureGhost,
     teardown: teardown,
     setup: setup,
     doAuth: doAuth,

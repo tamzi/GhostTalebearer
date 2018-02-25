@@ -59,8 +59,8 @@ posts = {
         // Push all of our tasks into a `tasks` array in the correct order
         tasks = [
             localUtils.validate(docName, {opts: permittedOptions}),
-            localUtils.handlePublicPermissions(docName, 'browse', unsafeAttrs),
             localUtils.convertOptions(allowedIncludes, models.Post.allowedFormats),
+            localUtils.handlePublicPermissions(docName, 'browse', unsafeAttrs),
             modelQuery
         ];
 
@@ -106,8 +106,8 @@ posts = {
         // Push all of our tasks into a `tasks` array in the correct order
         tasks = [
             localUtils.validate(docName, {attrs: attrs, opts: extraAllowedOptions}),
-            localUtils.handlePublicPermissions(docName, 'read', unsafeAttrs),
             localUtils.convertOptions(allowedIncludes, models.Post.allowedFormats),
+            localUtils.handlePublicPermissions(docName, 'read', unsafeAttrs),
             modelQuery
         ];
 
@@ -162,8 +162,8 @@ posts = {
         // Push all of our tasks into a `tasks` array in the correct order
         tasks = [
             localUtils.validate(docName, {opts: localUtils.idDefaultOptions.concat(extraAllowedOptions)}),
-            localUtils.handlePermissions(docName, 'edit', unsafeAttrs),
             localUtils.convertOptions(allowedIncludes),
+            localUtils.handlePermissions(docName, 'edit', unsafeAttrs),
             modelQuery
         ];
 
@@ -206,8 +206,8 @@ posts = {
         // Push all of our tasks into a `tasks` array in the correct order
         tasks = [
             localUtils.validate(docName),
-            localUtils.handlePermissions(docName, 'add', unsafeAttrs),
             localUtils.convertOptions(allowedIncludes),
+            localUtils.handlePermissions(docName, 'add', unsafeAttrs),
             modelQuery
         ];
 
@@ -238,15 +238,17 @@ posts = {
             return Post.findOne(data, fetchOpts).then(function () {
                 return Post.destroy(options).return(null);
             }).catch(Post.NotFoundError, function () {
-                throw new common.errors.NotFoundError({message: common.i18n.t('errors.api.posts.postNotFound')});
+                throw new common.errors.NotFoundError({
+                    message: common.i18n.t('errors.api.posts.postNotFound')
+                });
             });
         }
 
         // Push all of our tasks into a `tasks` array in the correct order
         tasks = [
             localUtils.validate(docName, {opts: localUtils.idDefaultOptions}),
-            localUtils.handlePermissions(docName, 'destroy', unsafeAttrs),
             localUtils.convertOptions(allowedIncludes),
+            localUtils.handlePermissions(docName, 'destroy', unsafeAttrs),
             deletePost
         ];
 

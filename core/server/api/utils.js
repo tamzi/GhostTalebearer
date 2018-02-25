@@ -234,6 +234,10 @@ utils = {
                     return Promise.reject(err);
                 }
 
+                if (common.errors.utils.isIgnitionError(err)) {
+                    return Promise.reject(err);
+                }
+
                 return Promise.reject(new common.errors.GhostError({
                     err: err
                 }));
@@ -277,7 +281,8 @@ utils = {
          */
         return function doConversion(options) {
             if (options.include) {
-                options.include = utils.prepareInclude(options.include, allowedIncludes);
+                options.withRelated = utils.prepareInclude(options.include, allowedIncludes);
+                delete options.include;
             }
 
             if (options.fields) {

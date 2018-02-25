@@ -51,8 +51,8 @@ module.exports = function (Bookshelf) {
 
             var tableName = _.result(this, 'tableName');
 
-            if (options.include && options.include.indexOf('count.posts') > -1) {
-                // remove post_count from withRelated and include
+            if (options.withRelated && options.withRelated.indexOf('count.posts') > -1) {
+                // remove post_count from withRelated
                 options.withRelated = _.pull([].concat(options.withRelated), 'count.posts');
 
                 // Call the query builder
@@ -84,8 +84,10 @@ module.exports = function (Bookshelf) {
             return modelProto.fetchAll.apply(this, arguments);
         },
 
-        finalize: function (attrs) {
-            var countRegex = /^(count)(__)(.*)$/;
+        serialize: function serialize(options) {
+            var attrs = modelProto.serialize.call(this, options),
+                countRegex = /^(count)(__)(.*)$/;
+
             _.forOwn(attrs, function (value, key) {
                 var match = key.match(countRegex);
                 if (match) {
