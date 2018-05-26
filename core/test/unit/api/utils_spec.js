@@ -351,7 +351,17 @@ describe('API Utils', function () {
             }).catch(done);
         });
 
-        it('should do author_id to author conversion for posts', function (done) {
+        it('passed through a simple, correct object', function (done) {
+            var object = {test: [{id: 1}]};
+            apiUtils.checkObject(_.cloneDeep(object), 'test').then(function (data) {
+                should.exist(data);
+                data.should.have.ownProperty('test');
+                object.should.eql(data);
+                done();
+            }).catch(done);
+        });
+
+        it('[DEPRECATED] should do author_id to author conversion for posts', function (done) {
             var object = {posts: [{id: 1, author: 4}]};
             apiUtils.checkObject(_.cloneDeep(object), 'posts').then(function (data) {
                 should.exist(data);
@@ -364,7 +374,7 @@ describe('API Utils', function () {
             }).catch(done);
         });
 
-        it('should not do author_id to author conversion for posts if not needed', function (done) {
+        it('[DEPRECATED] should not do author_id to author conversion for posts if not needed', function (done) {
             var object = {posts: [{id: 1, author_id: 4}]};
             apiUtils.checkObject(_.cloneDeep(object), 'posts').then(function (data) {
                 should.exist(data);
@@ -423,6 +433,157 @@ describe('API Utils', function () {
                 data.test[0].should.eql('something');
                 done();
             }).catch(done);
+        });
+
+        describe('post.tags structure', function () {
+            it('post.tags is empty', function (done) {
+                var object = {
+                    posts: [{
+                        id: 1,
+                        tags: []
+                    }]
+                };
+
+                apiUtils.checkObject(_.cloneDeep(object), 'posts')
+                    .then(function (object) {
+                        object.posts[0].tags.length.should.eql(0);
+                        done();
+                    })
+                    .catch(done);
+            });
+
+            it('post.tags contains `parent`', function (done) {
+                var object = {
+                    posts: [{
+                        id: 1,
+                        tags: [{id: 'objectid', parent: null}]
+                    }]
+                };
+
+                apiUtils.checkObject(_.cloneDeep(object), 'posts')
+                    .then(function (object) {
+                        object.posts[0].tags[0].hasOwnProperty('parent').should.be.false();
+                        object.posts[0].tags[0].hasOwnProperty('parent_id').should.be.true();
+                        done();
+                    })
+                    .catch(done);
+            });
+
+            it('post.tags contains `parent_id`', function (done) {
+                var object = {
+                    posts: [{
+                        id: 1,
+                        tags: [{id: 'objectid', parent_id: null}]
+                    }]
+                };
+
+                apiUtils.checkObject(_.cloneDeep(object), 'posts')
+                    .then(function (object) {
+                        object.posts[0].tags[0].hasOwnProperty('parent').should.be.false();
+                        object.posts[0].tags[0].hasOwnProperty('parent_id').should.be.true();
+                        done();
+                    })
+                    .catch(done);
+            });
+
+            it('post.tags contains no parent', function (done) {
+                var object = {
+                    posts: [{
+                        id: 1,
+                        tags: [{id: 'objectid'}]
+                    }]
+                };
+
+                apiUtils.checkObject(_.cloneDeep(object), 'posts')
+                    .then(function (object) {
+                        object.posts[0].tags[0].hasOwnProperty('parent').should.be.false();
+                        object.posts[0].tags[0].hasOwnProperty('parent_id').should.be.false();
+                        done();
+                    })
+                    .catch(done);
+            });
+        });
+
+        describe('post.authors structure', function () {
+            it('post.authors is not present', function (done) {
+                var object = {posts: [{id: 1}]};
+
+                apiUtils.checkObject(_.cloneDeep(object), 'posts')
+                    .then(function () {
+                        done();
+                    })
+                    .catch(done);
+            });
+
+            it('post.authors is no array', function (done) {
+                var object = {posts: [{id: 1, authors: null}]};
+
+                apiUtils.checkObject(_.cloneDeep(object), 'posts')
+                    .then(function () {
+                        "Test should fail".should.eql(false);
+                    })
+                    .catch(function (err) {
+                        (err instanceof common.errors.BadRequestError).should.be.true;
+                        err.message.should.eql('No valid object structure provided for: posts[*].authors');
+                        done();
+                    });
+            });
+
+            it('post.authors is empty', function (done) {
+                var object = {posts: [{id: 1, authors: []}]};
+
+                apiUtils.checkObject(_.cloneDeep(object), 'posts')
+                    .then(function () {
+                        done();
+                    })
+                    .catch(done);
+            });
+
+            it('post.authors contains id property', function (done) {
+                var object = {
+                    posts: [{
+                        id: 1,
+                        authors: [{id: 'objectid', name: 'Kate'}, {id: 'objectid', name: 'Steffen'}]
+                    }]
+                };
+
+                apiUtils.checkObject(_.cloneDeep(object), 'posts')
+                    .then(function () {
+                        done();
+                    })
+                    .catch(done);
+            });
+
+            it('post.authors does not contain id property', function (done) {
+                var object = {posts: [{id: 1, authors: [{id: 'objectid', name: 'Kate'}, {name: 'Steffen'}]}]};
+
+                apiUtils.checkObject(_.cloneDeep(object), 'posts')
+                    .then(function () {
+                        "Test should fail".should.eql(false);
+                    })
+                    .catch(function (err) {
+                        (err instanceof common.errors.BadRequestError).should.be.true;
+                        err.message.should.eql('No valid object structure provided for: posts[*].authors');
+                        done();
+                    });
+            });
+
+            it('post.authors contains nested relations', function (done) {
+                var object = {
+                    posts: [{
+                        id: 1,
+                        authors: [{id: 'objectid', name: 'Kate', roles: [{id: 'something'}], permissions: []}]
+                    }]
+                };
+
+                apiUtils.checkObject(_.cloneDeep(object), 'posts')
+                    .then(function (object) {
+                        should.not.exist(object.posts[0].authors[0].roles);
+                        should.not.exist(object.posts[0].authors[0].permissions);
+                        done();
+                    })
+                    .catch(done);
+            });
         });
     });
 

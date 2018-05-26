@@ -1,4 +1,4 @@
-'use strict';
+/* eslint-disable */
 
 const mockKnex = require('mock-knex'),
     _ = require('lodash'),
@@ -18,7 +18,16 @@ class KnexMock {
     initialiseDb() {
         this.db = {};
 
-        _.each(_.pick(_.cloneDeep(DataGenerator.forKnex), ['posts', 'users', 'tags', 'permissions', 'roles']), (objects, tableName) => {
+        _.each(_.pick(_.cloneDeep(DataGenerator.forKnex), [
+            'posts',
+            'users',
+            'tags',
+            'invites',
+            'permissions',
+            'roles',
+            'posts_authors',
+            'posts_tags'
+        ]), (objects, tableName) => {
             this.db[tableName] = [];
 
             _.each(objects, (object) => {
@@ -62,14 +71,20 @@ class KnexMock {
                                 joinAttribute = query.sql.match(/on\s\"\w+\"\.\"\w+\"\s\=\s\"\w+\"\.(\"\w+\")/)[1],
                                 joinTable = query.sql.match(/on\s\"\w+\"\.\"\w+\"\s\=\s(\"\w+\")/)[1],
                                 targetIdentifier = query.sql.match(/(\"\w+\")\sin\s\(\?\)/),
-                                value = query.bindings[0],
+                                values = query.bindings,
                                 targetEntries,
                                 toReturn = [];
 
+                            if (!targetIdentifier) {
+                                targetIdentifier = query.sql.match(/where\s\"\w+\"\.\"(\w+)\"\s\=/);
+                            }
+
+                            if (!targetIdentifier) {
+                                targetIdentifier = query.sql.match(/where\s\"\w+\"\.\"(\w+)\"\s\in\s/);
+                            }
+
                             if (targetIdentifier) {
                                 targetIdentifier = targetIdentifier[1];
-                            } else {
-                                targetIdentifier = query.sql.match(/where\s\"\w+\"\.\"(\w+)\"\s\=/)[1];
                             }
 
                             targetTable = targetTable.replace(/"/g, '');
@@ -81,18 +96,18 @@ class KnexMock {
                             debug(targetTable, targetIdentifier, targetAttribute, joinTable, joinAttribute);
 
                             targetEntries = _.filter(this.db[targetTable], ((existing) => {
-                                if (existing[targetIdentifier] === value) {
+                                if (values.indexOf(existing[targetIdentifier]) !== -1) {
                                     return true;
                                 }
                             }));
 
                             if (targetEntries && targetEntries.length) {
                                 _.each(targetEntries, ((target) => {
-                                    const found = _.find(this.db[joinTable], ((joinEntry) => {
+                                    const found = _.cloneDeep(_.find(this.db[joinTable], ((joinEntry) => {
                                         if (joinEntry[joinAttribute] === target[targetAttribute]) {
                                             return true;
                                         }
-                                    }));
+                                    })));
 
                                     _.each(target, function (value, key) {
                                         let match = query.sql.match(new RegExp('\\"' + targetTable + '\\"\\.\\"' + key + '"\\sas\\s(\\"\\w+\\")'));
@@ -121,25 +136,60 @@ class KnexMock {
                         } else {
                             let tableName = query.sql.match(/from\s\"(\w+)\"/)[1],
                                 where = query.sql.match(/\"(\w+)\"\s\=\s\?/),
-                                value = query.bindings[0],
-                                dbEntry;
+                                values = query.bindings,
+                                dbEntry,
+                                wheres = [];
 
                             // where "users"."id" in ('1')
                             if (!where) {
                                 where = query.sql.match(/\"\w+\"\.\"(\w+)\"\sin\s\(\?\)/)[1];
                             } else {
-                                where = where[1];
+                                // 3 wheres
+                                let wheresMatch = query.sql.match(/\"(\w+)\"\s\=\s\?\sand\s\"\w+\"\.\"(\w+)\"\s\=\s\?\sand\s\"\w+\"\.\"(\w+)\"\s\=\s\?/);
+
+                                if (wheresMatch) {
+                                    wheres.push(wheresMatch[1]);
+                                    wheres.push(wheresMatch[2]);
+                                    wheres.push(wheresMatch[3]);
+                                } else {
+                                    // 2 wheres
+                                    let wheresMatch = query.sql.match(/\"(\w+)\"\s\=\s\?\sand\s\"\w+\"\.\"(\w+)\"\s\=\s\?/);
+
+                                    if (wheresMatch) {
+                                        wheres.push(wheresMatch[1]);
+                                        wheres.push(wheresMatch[2]);
+                                    } else {
+                                        wheres.push(where[1]);
+                                    }
+                                }
                             }
 
-                            debug(tableName, where, value);
+                            values = query.bindings.slice(0, wheres.length);
+
+                            debug(tableName, wheres, values);
 
                             dbEntry = _.filter(this.db[tableName], ((existing) => {
-                                if (existing[where] === value) {
+                                if (_.isEqual(_.values(_.pick(existing, wheres)), values)) {
                                     return true;
                                 }
                             }));
 
                             if (dbEntry) {
+                                // select fields
+                                dbEntry = _.map(dbEntry, (obj) => {
+                                    let keys = query.sql.match(/select\s(\".*\"\,?)+\sfrom/);
+
+                                    if (keys) {
+                                        keys = keys[1];
+                                        keys = keys.replace(/"/g, '');
+                                        keys = keys.replace(/\s/g, '');
+                                        keys = keys.split(',');
+                                        return _.pick(obj, keys);
+                                    }
+
+                                    return obj;
+                                });
+
                                 query.response(dbEntry);
                                 debug('#### Query end.\n');
                             } else {

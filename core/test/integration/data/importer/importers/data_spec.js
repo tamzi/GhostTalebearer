@@ -243,31 +243,36 @@ describe('Import', function () {
 
                 // user should still have the credentials from the original insert, not the import
                 users[0].email.should.equal(testUtils.DataGenerator.Content.users[0].email);
-                users[0].password.should.equal(testUtils.DataGenerator.Content.users[0].password);
-                // but the name, slug, and bio should have been overridden
-                users[0].name.should.equal(exportData.data.users[0].name);
-                users[0].slug.should.equal(exportData.data.users[0].slug);
-                should.not.exist(users[0].bio, 'bio is not imported');
 
-                // import no longer requires all data to be dropped, and adds posts
-                posts.length.should.equal(exportData.data.posts.length, 'Wrong number of posts');
+                models.User.isPasswordCorrect({
+                    hashedPassword: users[0].password,
+                    plainPassword: testUtils.DataGenerator.Content.users[0].password
+                }).then(function () {
+                    // but the name, slug, and bio should have been overridden
+                    users[0].name.should.equal(exportData.data.users[0].name);
+                    users[0].slug.should.equal(exportData.data.users[0].slug);
+                    should.not.exist(users[0].bio, 'bio is not imported');
 
-                // active_theme should NOT have been overridden
-                _.find(settings, {key: 'active_theme'}).value.should.equal('casper', 'Wrong theme');
+                    // import no longer requires all data to be dropped, and adds posts
+                    posts.length.should.equal(exportData.data.posts.length, 'Wrong number of posts');
 
-                // test tags
-                tags.length.should.equal(exportData.data.tags.length, 'no new tags');
+                    // active_theme should NOT have been overridden
+                    _.find(settings, {key: 'active_theme'}).value.should.equal('casper', 'Wrong theme');
 
-                // Ensure imported post retains set timestamp
-                // When in sqlite we are returned a unix timestamp number,
-                // in MySQL we're returned a date object.
-                // We pass the returned post always through the date object
-                // to ensure the return is consistent for all DBs.
-                assert.equal(moment(posts[0].created_at).valueOf(), 1388318310000);
-                assert.equal(moment(posts[0].updated_at).valueOf(), 1388318310000);
-                assert.equal(moment(posts[0].published_at).valueOf(), 1388404710000);
+                    // test tags
+                    tags.length.should.equal(exportData.data.tags.length, 'no new tags');
 
-                done();
+                    // Ensure imported post retains set timestamp
+                    // When in sqlite we are returned a unix timestamp number,
+                    // in MySQL we're returned a date object.
+                    // We pass the returned post always through the date object
+                    // to ensure the return is consistent for all DBs.
+                    assert.equal(moment(posts[0].created_at).valueOf(), 1388318310000);
+                    assert.equal(moment(posts[0].updated_at).valueOf(), 1388318310000);
+                    assert.equal(moment(posts[0].published_at).valueOf(), 1388404710000);
+
+                    done();
+                });
             }).catch(done);
         });
 
@@ -341,32 +346,37 @@ describe('Import', function () {
 
                 // user should still have the credentials from the original insert, not the import
                 users[0].email.should.equal(testUtils.DataGenerator.Content.users[0].email);
-                users[0].password.should.equal(testUtils.DataGenerator.Content.users[0].password);
-                // but the name, slug, and bio should have been overridden
-                users[0].name.should.equal(exportData.data.users[0].name);
-                users[0].slug.should.equal(exportData.data.users[0].slug);
-                should.not.exist(users[0].bio, 'bio is not imported');
 
-                // import no longer requires all data to be dropped, and adds posts
-                posts.length.should.equal(exportData.data.posts.length, 'Wrong number of posts');
-                posts[0].comment_id.should.eql(exportData.data.posts[0].id.toString());
+                models.User.isPasswordCorrect({
+                    hashedPassword: users[0].password,
+                    plainPassword: testUtils.DataGenerator.Content.users[0].password
+                }).then(function () {
+                    // but the name, slug, and bio should have been overridden
+                    users[0].name.should.equal(exportData.data.users[0].name);
+                    users[0].slug.should.equal(exportData.data.users[0].slug);
+                    should.not.exist(users[0].bio, 'bio is not imported');
 
-                // active_theme should NOT have been overridden
-                _.find(settings, {key: 'active_theme'}).value.should.equal('casper', 'Wrong theme');
+                    // import no longer requires all data to be dropped, and adds posts
+                    posts.length.should.equal(exportData.data.posts.length, 'Wrong number of posts');
+                    posts[0].comment_id.should.eql(exportData.data.posts[0].id.toString());
 
-                // test tags
-                tags.length.should.equal(exportData.data.tags.length, 'no new tags');
+                    // active_theme should NOT have been overridden
+                    _.find(settings, {key: 'active_theme'}).value.should.equal('casper', 'Wrong theme');
 
-                // Ensure imported post retains set timestamp
-                // When in sqlite we are returned a unix timestamp number,
-                // in MySQL we're returned a date object.
-                // We pass the returned post always through the date object
-                // to ensure the return is consistant for all DBs.
-                assert.equal(moment(posts[0].created_at).valueOf(), 1419940710000);
-                assert.equal(moment(posts[0].updated_at).valueOf(), 1420027110000);
-                assert.equal(moment(posts[0].published_at).valueOf(), 1420027110000);
+                    // test tags
+                    tags.length.should.equal(exportData.data.tags.length, 'no new tags');
 
-                done();
+                    // Ensure imported post retains set timestamp
+                    // When in sqlite we are returned a unix timestamp number,
+                    // in MySQL we're returned a date object.
+                    // We pass the returned post always through the date object
+                    // to ensure the return is consistant for all DBs.
+                    assert.equal(moment(posts[0].created_at).valueOf(), 1419940710000);
+                    assert.equal(moment(posts[0].updated_at).valueOf(), 1420027110000);
+                    assert.equal(moment(posts[0].published_at).valueOf(), 1420027110000);
+
+                    done();
+                });
             }).catch(done);
         });
     });
@@ -398,18 +408,23 @@ describe('Import', function () {
 
                 // user should still have the credentials from the original insert, not the import
                 users[0].email.should.equal(testUtils.DataGenerator.Content.users[0].email);
-                users[0].password.should.equal(testUtils.DataGenerator.Content.users[0].password);
-                // but the name, slug, and bio should have been overridden
-                users[0].name.should.equal(exportData.data.users[0].name);
-                users[0].slug.should.equal(exportData.data.users[0].slug);
-                should.not.exist(users[0].bio, 'bio is not imported');
 
-                // test posts
-                posts.length.should.equal(1, 'Wrong number of posts');
-                // test tags
-                tags.length.should.equal(1, 'no new tags');
+                models.User.isPasswordCorrect({
+                    hashedPassword: users[0].password,
+                    plainPassword: testUtils.DataGenerator.Content.users[0].password
+                }).then(function () {
+                    // but the name, slug, and bio should have been overridden
+                    users[0].name.should.equal(exportData.data.users[0].name);
+                    users[0].slug.should.equal(exportData.data.users[0].slug);
+                    should.not.exist(users[0].bio, 'bio is not imported');
 
-                done();
+                    // test posts
+                    posts.length.should.equal(1, 'Wrong number of posts');
+                    // test tags
+                    tags.length.should.equal(1, 'no new tags');
+
+                    done();
+                });
             }).catch(done);
         });
 
@@ -501,23 +516,28 @@ describe('Import', function () {
 
                 // user should still have the credentials from the original insert, not the import
                 users[0].email.should.equal(testUtils.DataGenerator.Content.users[0].email);
-                users[0].password.should.equal(testUtils.DataGenerator.Content.users[0].password);
-                // but the name, slug, and bio should have been overridden
-                users[0].name.should.equal('Joe Bloggs');
-                users[0].slug.should.equal('joe-bloggs');
-                should.not.exist(users[0].bio, 'bio is not imported');
 
-                // test posts
-                posts.length.should.equal(1, 'Wrong number of posts');
+                models.User.isPasswordCorrect({
+                    hashedPassword: users[0].password,
+                    plainPassword: testUtils.DataGenerator.Content.users[0].password
+                }).then(function () {
+                    // but the name, slug, and bio should have been overridden
+                    users[0].name.should.equal('Joe Bloggs');
+                    users[0].slug.should.equal('joe-bloggs');
+                    should.not.exist(users[0].bio, 'bio is not imported');
 
-                // we fallback to owner user
-                // NOTE: ember can handle unknown author_id, but still a fallback to an existing user is better.
-                posts[0].author_id.should.eql('1');
+                    // test posts
+                    posts.length.should.equal(1, 'Wrong number of posts');
 
-                // test tags
-                tags.length.should.equal(0, 'no tags');
+                    // we fallback to owner user
+                    // NOTE: ember can handle unknown author_id, but still a fallback to an existing user is better.
+                    posts[0].author_id.should.eql('1');
 
-                done();
+                    // test tags
+                    tags.length.should.equal(0, 'no tags');
+
+                    done();
+                });
             }).catch(done);
         });
 
@@ -861,42 +881,47 @@ describe('Import (new test structure)', function () {
                 });
 
                 ownerUser.email.should.equal(testUtils.DataGenerator.Content.users[0].email);
-                ownerUser.password.should.equal(testUtils.DataGenerator.Content.users[0].password);
-                ownerUser.status.should.equal('active');
 
-                user1.email.should.equal(exportData.data.users[0].email);
-                user2.email.should.equal(exportData.data.users[1].email);
-                user3.email.should.equal(exportData.data.users[2].email);
+                models.User.isPasswordCorrect({
+                    hashedPassword: users[0].password,
+                    plainPassword: testUtils.DataGenerator.Content.users[0].password
+                }).then(function () {
+                    ownerUser.status.should.equal('active');
 
-                // Newly created users should have a status of locked
-                user2.status.should.equal('locked');
-                user3.status.should.equal('locked');
+                    user1.email.should.equal(exportData.data.users[0].email);
+                    user2.email.should.equal(exportData.data.users[1].email);
+                    user3.email.should.equal(exportData.data.users[2].email);
 
-                // Newly created users should have created_at/_by and updated_at/_by set to when they were imported
-                user2.created_by.should.equal(user1.id);
-                user2.created_at.should.not.equal(exportData.data.users[1].created_at);
-                user2.updated_by.should.equal(ownerUser.id);
-                user2.updated_at.should.not.equal(exportData.data.users[1].updated_at);
-                user3.created_by.should.equal(user1.id);
-                user3.created_at.should.not.equal(exportData.data.users[2].created_at);
-                user3.updated_by.should.equal(ownerUser.id);
-                user3.updated_at.should.not.equal(exportData.data.users[2].updated_at);
+                    // Newly created users should have a status of locked
+                    user2.status.should.equal('locked');
+                    user3.status.should.equal('locked');
 
-                rolesUsers.length.should.equal(4, 'There should be 4 role relations');
+                    // Newly created users should have created_at/_by and updated_at/_by set to when they were imported
+                    user2.created_by.should.equal(user1.id);
+                    user2.created_at.should.not.equal(exportData.data.users[1].created_at);
+                    user2.updated_by.should.equal(ownerUser.id);
+                    user2.updated_at.should.not.equal(exportData.data.users[1].updated_at);
+                    user3.created_by.should.equal(user1.id);
+                    user3.created_at.should.not.equal(exportData.data.users[2].created_at);
+                    user3.updated_by.should.equal(ownerUser.id);
+                    user3.updated_at.should.not.equal(exportData.data.users[2].updated_at);
 
-                _.each(rolesUsers, function (roleUser) {
-                    if (roleUser.user_id === ownerUser.id) {
-                        roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[3].id, 'Original user should be an owner');
-                    }
-                    if (roleUser.user_id === user2.id) {
-                        roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[0].id, 'Josephine should be an admin');
-                    }
-                    if (roleUser.user_id === user3.id) {
-                        roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[2].id, 'Smith should be an author by default');
-                    }
+                    rolesUsers.length.should.equal(4, 'There should be 4 role relations');
+
+                    _.each(rolesUsers, function (roleUser) {
+                        if (roleUser.user_id === ownerUser.id) {
+                            roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[3].id, 'Original user should be an owner');
+                        }
+                        if (roleUser.user_id === user2.id) {
+                            roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[0].id, 'Josephine should be an admin');
+                        }
+                        if (roleUser.user_id === user3.id) {
+                            roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[2].id, 'Smith should be an author by default');
+                        }
+                    });
+
+                    done();
                 });
-
-                done();
             }).catch(done);
         });
 
@@ -1098,40 +1123,45 @@ describe('Import (new test structure)', function () {
                 });
 
                 user1.email.should.equal(testUtils.DataGenerator.Content.users[0].email);
-                user1.password.should.equal(testUtils.DataGenerator.Content.users[0].password);
-                user1.status.should.equal('active');
-                user2.email.should.equal(exportData.data.users[0].email);
-                user3.email.should.equal(exportData.data.users[1].email);
 
-                // Newly created users should have a status of locked
-                user2.status.should.equal('locked');
-                user3.status.should.equal('locked');
+                models.User.isPasswordCorrect({
+                    hashedPassword: users[0].password,
+                    plainPassword: testUtils.DataGenerator.Content.users[0].password
+                }).then(function () {
+                    user1.status.should.equal('active');
+                    user2.email.should.equal(exportData.data.users[0].email);
+                    user3.email.should.equal(exportData.data.users[1].email);
 
-                // Newly created users should have created_at/_by and updated_at/_by set to when they were imported
-                user2.created_by.should.equal(user1.id);
-                user2.created_at.should.not.equal(exportData.data.users[0].created_at);
-                user2.updated_by.should.equal(user1.id);
-                user2.updated_at.should.not.equal(exportData.data.users[0].updated_at);
-                user3.created_by.should.equal(user1.id);
-                user3.created_at.should.not.equal(exportData.data.users[1].created_at);
-                user3.updated_by.should.equal(user1.id);
-                user3.updated_at.should.not.equal(exportData.data.users[1].updated_at);
+                    // Newly created users should have a status of locked
+                    user2.status.should.equal('locked');
+                    user3.status.should.equal('locked');
 
-                rolesUsers.length.should.equal(3, 'There should be 3 role relations');
+                    // Newly created users should have created_at/_by and updated_at/_by set to when they were imported
+                    user2.created_by.should.equal(user1.id);
+                    user2.created_at.should.not.equal(exportData.data.users[0].created_at);
+                    user2.updated_by.should.equal(user1.id);
+                    user2.updated_at.should.not.equal(exportData.data.users[0].updated_at);
+                    user3.created_by.should.equal(user1.id);
+                    user3.created_at.should.not.equal(exportData.data.users[1].created_at);
+                    user3.updated_by.should.equal(user1.id);
+                    user3.updated_at.should.not.equal(exportData.data.users[1].updated_at);
 
-                _.each(rolesUsers, function (roleUser) {
-                    if (roleUser.user_id === user1.id) {
-                        roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[3].id, 'Original user should be an owner');
-                    }
-                    if (roleUser.user_id === user2.id) {
-                        roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[0].id, 'Josephine should be an admin');
-                    }
-                    if (roleUser.user_id === user3.id) {
-                        roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[2].id, 'Smith should be an author by default');
-                    }
+                    rolesUsers.length.should.equal(3, 'There should be 3 role relations');
+
+                    _.each(rolesUsers, function (roleUser) {
+                        if (roleUser.user_id === user1.id) {
+                            roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[3].id, 'Original user should be an owner');
+                        }
+                        if (roleUser.user_id === user2.id) {
+                            roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[0].id, 'Josephine should be an admin');
+                        }
+                        if (roleUser.user_id === user3.id) {
+                            roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[2].id, 'Smith should be an author by default');
+                        }
+                    });
+
+                    done();
                 });
-
-                done();
             }).catch(done);
         });
 
@@ -1331,40 +1361,45 @@ describe('Import (new test structure)', function () {
                 });
 
                 ownerUser.email.should.equal(testUtils.DataGenerator.Content.users[0].email);
-                ownerUser.password.should.equal(testUtils.DataGenerator.Content.users[0].password);
-                ownerUser.status.should.equal('active');
-                newUser.email.should.equal(exportData.data.users[1].email);
-                existingUser.email.should.equal(exportData.data.users[2].email);
 
-                // Newly created users should have a status of locked
-                newUser.status.should.equal('locked');
-                // The already existing user should still have a status of active
-                existingUser.status.should.equal('active');
+                models.User.isPasswordCorrect({
+                    hashedPassword: users[0].password,
+                    plainPassword: testUtils.DataGenerator.Content.users[0].password
+                }).then(function () {
+                    ownerUser.status.should.equal('active');
+                    newUser.email.should.equal(exportData.data.users[1].email);
+                    existingUser.email.should.equal(exportData.data.users[2].email);
 
-                // Newly created users should have created_at/_by and updated_at/_by set to when they were imported
-                newUser.created_by.should.equal(importedOwnerUser.id);
-                newUser.created_at.should.not.equal(exportData.data.users[1].created_at);
-                newUser.updated_by.should.equal(ownerUser.id);
-                newUser.updated_at.should.not.equal(exportData.data.users[1].updated_at);
+                    // Newly created users should have a status of locked
+                    newUser.status.should.equal('locked');
+                    // The already existing user should still have a status of active
+                    existingUser.status.should.equal('active');
 
-                rolesUsers.length.should.equal(7, 'There should be 7 role relations');
+                    // Newly created users should have created_at/_by and updated_at/_by set to when they were imported
+                    newUser.created_by.should.equal(importedOwnerUser.id);
+                    newUser.created_at.should.not.equal(exportData.data.users[1].created_at);
+                    newUser.updated_by.should.equal(ownerUser.id);
+                    newUser.updated_at.should.not.equal(exportData.data.users[1].updated_at);
 
-                _.each(rolesUsers, function (roleUser) {
-                    if (roleUser.user_id === ownerUser.id) {
-                        roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[3].id, 'Original user should be an owner');
-                    }
-                    if (roleUser.user_id === importedOwnerUser.id) {
-                        roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[0].id, 'Imported owner should be an admin now.');
-                    }
-                    if (roleUser.user_id === newUser.id) {
-                        roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[0].id, 'New user should be an admin');
-                    }
-                    if (roleUser.user_id === existingUser.id) {
-                        roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[0].id, 'Existing user was an admin');
-                    }
+                    rolesUsers.length.should.equal(7, 'There should be 7 role relations');
+
+                    _.each(rolesUsers, function (roleUser) {
+                        if (roleUser.user_id === ownerUser.id) {
+                            roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[3].id, 'Original user should be an owner');
+                        }
+                        if (roleUser.user_id === importedOwnerUser.id) {
+                            roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[0].id, 'Imported owner should be an admin now.');
+                        }
+                        if (roleUser.user_id === newUser.id) {
+                            roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[0].id, 'New user should be an admin');
+                        }
+                        if (roleUser.user_id === existingUser.id) {
+                            roleUser.role_id.should.equal(testUtils.DataGenerator.Content.roles[0].id, 'Existing user was an admin');
+                        }
+                    });
+
+                    done();
                 });
-
-                done();
             }).catch(done);
         });
 
@@ -1809,31 +1844,80 @@ describe('Import (new test structure)', function () {
         });
     });
 
-    describe('1.0: basic import test', function () {
+    describe('1.0: tests', function () {
         var exportData;
 
-        before(function doImport() {
-            // initialize the blog with some data
-            return testUtils.initFixtures('roles', 'owner', 'settings').then(function () {
-                return testUtils.fixtures.loadExportFixture('export-basic-test');
-            }).then(function (exported) {
-                exportData = exported.db[0];
-                return dataImporter.doImport(exportData, importOptions);
+        afterEach(testUtils.teardown);
+
+        describe('amp/comment', function () {
+            before(function doImport() {
+                // initialize the blog with some data
+                return testUtils.initFixtures('roles', 'owner', 'settings').then(function () {
+                    return testUtils.fixtures.loadExportFixture('export-basic-test');
+                }).then(function (exported) {
+                    exportData = exported.db[0];
+                    return dataImporter.doImport(exportData, importOptions);
+                });
+            });
+
+            it('keeps the value of the amp field', function () {
+                return models.Post.findPage(_.merge({formats: 'amp'}, testUtils.context.internal)).then(function (response) {
+                    should.exist(response.posts);
+
+                    response.posts.length.should.eql(exportData.data.posts.length);
+                    response.posts[0].amp.should.eql(exportData.data.posts[1].id);
+                    response.posts[1].amp.should.eql(exportData.data.posts[0].amp);
+
+                    response.posts[0].comment_id.should.eql(response.posts[0].amp);
+                    response.posts[1].comment_id.should.eql(response.posts[1].amp);
+                });
             });
         });
 
-        after(testUtils.teardown);
+        describe('authors', function () {
+            before(function doImport() {
+                // initialize the blog with some data
+                return testUtils.initFixtures('roles', 'owner', 'settings').then(function () {
+                    return testUtils.fixtures.loadExportFixture('export-authors');
+                }).then(function (exported) {
+                    exportData = exported.db[0];
+                    return dataImporter.doImport(exportData, importOptions);
+                });
+            });
 
-        it('keeps the value of the amp field', function () {
-            return models.Post.findPage(_.merge({formats: 'amp'}, testUtils.context.internal)).then(function (response) {
-                should.exist(response.posts);
+            it('imports authors successfully', function () {
+                return Promise.join(
+                    models.Post.findPage(_.merge({withRelated: ['authors']}, testUtils.context.internal)),
+                    models.User.findPage(testUtils.context.internal)
+                ).then(function (importedData) {
+                    const posts = importedData[0].posts,
+                        users = importedData[1].users;
 
-                response.posts.length.should.eql(exportData.data.posts.length);
-                response.posts[0].amp.should.eql(exportData.data.posts[1].id);
-                response.posts[1].amp.should.eql(exportData.data.posts[0].amp);
+                    // owner + 3 imported users + 1 duplicate
+                    users.length.should.eql(4);
+                    users[0].slug.should.eql(exportData.data.users[0].slug);
+                    users[1].slug.should.eql(exportData.data.users[1].slug);
+                    users[2].slug.should.eql(exportData.data.users[2].slug);
+                    users[3].slug.should.eql(testUtils.DataGenerator.Content.users[0].slug);
 
-                response.posts[0].comment_id.should.eql(response.posts[0].amp);
-                response.posts[1].comment_id.should.eql(response.posts[1].amp);
+                    posts.length.should.eql(3);
+
+                    // has three posts_authors relations, but 2 of them are invalid
+                    posts[0].author.should.eql(users[2].id);
+                    posts[0].authors.length.should.eql(1);
+                    posts[0].authors[0].id.should.eql(users[2].id);
+
+                    // falls back to owner user, because target reference could not be resolved (duplicate)
+                    posts[1].author.should.eql(testUtils.DataGenerator.Content.users[0].id);
+                    posts[1].authors.length.should.eql(1);
+                    posts[1].authors[0].id.should.eql(testUtils.DataGenerator.Content.users[0].id);
+
+                    posts[2].author.should.eql(users[1].id);
+                    posts[2].authors.length.should.eql(3);
+                    posts[2].authors[0].id.should.eql(users[1].id);
+                    posts[2].authors[1].id.should.eql(users[0].id);
+                    posts[2].authors[2].id.should.eql(users[2].id);
+                });
             });
         });
     });
