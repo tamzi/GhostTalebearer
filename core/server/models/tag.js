@@ -1,5 +1,9 @@
 const ghostBookshelf = require('./base');
-let Tag, Tags;
+const {i18n} = require('../lib/common');
+const errors = require('@tryghost/errors');
+
+let Tag;
+let Tags;
 
 Tag = ghostBookshelf.Model.extend({
 
@@ -17,19 +21,25 @@ Tag = ghostBookshelf.Model.extend({
     },
 
     onCreated: function onCreated(model, attrs, options) {
+        ghostBookshelf.Model.prototype.onCreated.apply(this, arguments);
+
         model.emitChange('added', options);
     },
 
     onUpdated: function onUpdated(model, attrs, options) {
+        ghostBookshelf.Model.prototype.onUpdated.apply(this, arguments);
+
         model.emitChange('edited', options);
     },
 
     onDestroyed: function onDestroyed(model, options) {
+        ghostBookshelf.Model.prototype.onDestroyed.apply(this, arguments);
+
         model.emitChange('deleted', options);
     },
 
     onSaving: function onSaving(newTag, attr, options) {
-        var self = this;
+        const self = this;
 
         ghostBookshelf.Model.prototype.onSaving.apply(this, arguments);
 
@@ -38,7 +48,7 @@ Tag = ghostBookshelf.Model.extend({
             this.set('visibility', 'internal');
         }
 
-        if (this.hasChanged('slug') || !this.get('slug')) {
+        if (this.hasChanged('slug') || (!this.get('slug') && this.get('name'))) {
             // Pass the new slug through the generator to strip illegal characters, detect duplicates
             return ghostBookshelf.Model.generateSlug(Tag, this.get('slug') || this.get('name'),
                 {transacting: options.transacting})
@@ -48,48 +58,53 @@ Tag = ghostBookshelf.Model.extend({
         }
     },
 
-    emptyStringProperties: function emptyStringProperties() {
-        // CASE: the client might send empty image properties with "" instead of setting them to null.
-        // This can cause GQL to fail. We therefore enforce 'null' for empty image properties.
-        // See https://github.com/TryGhost/GQL/issues/24
-        return ['feature_image'];
-    },
-
     posts: function posts() {
         return this.belongsToMany('Post');
     },
 
     toJSON: function toJSON(unfilteredOptions) {
-        var options = Tag.filterOptions(unfilteredOptions, 'toJSON'),
-            attrs = ghostBookshelf.Model.prototype.toJSON.call(this, options);
+        const options = Tag.filterOptions(unfilteredOptions, 'toJSON');
+        const attrs = ghostBookshelf.Model.prototype.toJSON.call(this, options);
 
+        // @NOTE: this serialization should be moved into api layer, it's not being moved as it's not used
         attrs.parent = attrs.parent || attrs.parent_id;
         delete attrs.parent_id;
 
         return attrs;
+    },
+
+    getAction(event, options) {
+        const actor = this.getActor(options);
+
+        // @NOTE: we ignore internal updates (`options.context.internal`) for now
+        if (!actor) {
+            return;
+        }
+
+        // @TODO: implement context
+        return {
+            event: event,
+            resource_id: this.id || this.previous('id'),
+            resource_type: 'tag',
+            actor_id: actor.id,
+            actor_type: actor.type
+        };
     }
 }, {
     orderDefaultOptions: function orderDefaultOptions() {
         return {};
     },
 
-    /**
-     * @deprecated in favour of filter
-     */
-    processOptions: function processOptions(options) {
-        return options;
-    },
-
     permittedOptions: function permittedOptions(methodName) {
-        var options = ghostBookshelf.Model.permittedOptions(),
+        let options = ghostBookshelf.Model.permittedOptions.call(this, methodName);
 
-            // whitelists for the `options` hash argument on methods, by method name.
-            // these are the only options that can be passed to Bookshelf / Knex.
-            validOptions = {
-                findPage: ['page', 'limit', 'columns', 'filter', 'order'],
-                findAll: ['columns'],
-                findOne: ['visibility']
-            };
+        // whitelists for the `options` hash argument on methods, by method name.
+        // these are the only options that can be passed to Bookshelf / Knex.
+        const validOptions = {
+            findAll: ['columns'],
+            findOne: ['columns', 'visibility'],
+            destroy: ['destroyAll']
+        };
 
         if (validOptions[methodName]) {
             options = options.concat(validOptions[methodName]);
@@ -99,12 +114,18 @@ Tag = ghostBookshelf.Model.extend({
     },
 
     destroy: function destroy(unfilteredOptions) {
-        var options = this.filterOptions(unfilteredOptions, 'destroy', {extraAllowedProperties: ['id']});
+        const options = this.filterOptions(unfilteredOptions, 'destroy', {extraAllowedProperties: ['id']});
         options.withRelated = ['posts'];
 
         return this.forge({id: options.id})
             .fetch(options)
             .then(function destroyTagsAndPost(tag) {
+                if (!tag) {
+                    return Promise.reject(new errors.NotFoundError({
+                        message: i18n.t('errors.api.tags.tagNotFound')
+                    }));
+                }
+
                 return tag.related('posts')
                     .detach(null, options)
                     .then(function destroyTags() {

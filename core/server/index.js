@@ -1,9 +1,6 @@
-// # Bootup
-// This file needs serious love & refactoring
-
 /**
  * make sure overrides get's called first!
- * - keeping the overrides require here works for installing Ghost as npm!
+ * - keeping the overrides import here works for installing Ghost as npm!
  *
  * the call order is the following:
  * - root index requires core module
@@ -12,106 +9,187 @@
  */
 require('./overrides');
 
-// Module dependencies
-var debug = require('ghost-ignition').debug('boot:init'),
-    config = require('./config'),
-    Promise = require('bluebird'),
-    common = require('./lib/common'),
-    models = require('./models'),
-    permissions = require('./services/permissions'),
-    auth = require('./services/auth'),
-    dbHealth = require('./data/db/health'),
-    GhostServer = require('./ghost-server'),
-    scheduling = require('./adapters/scheduling'),
-    settings = require('./services/settings'),
-    themes = require('./services/themes'),
-    urlService = require('./services/url'),
+const debug = require('ghost-ignition').debug('boot:init');
+const Promise = require('bluebird');
+const config = require('../shared/config');
+const {events, i18n} = require('./lib/common');
+const logging = require('../shared/logging');
+const migrator = require('./data/db/migrator');
+const urlUtils = require('./../shared/url-utils');
+let parentApp;
 
-    // Services that need initialisation
-    apps = require('./services/apps'),
-    xmlrpc = require('./services/xmlrpc'),
-    slack = require('./services/slack'),
-    webhooks = require('./services/webhooks');
+// Frontend Components
+const themeService = require('../frontend/services/themes');
+const appService = require('../frontend/services/apps');
+const frontendSettings = require('../frontend/services/settings');
 
-// ## Initialise Ghost
-function init() {
-    debug('Init Start...');
+function initialiseServices() {
+    // CASE: When Ghost is ready with bootstrapping (db migrations etc.), we can trigger the router creation.
+    //       Reason is that the routers access the routes.yaml, which shouldn't and doesn't have to be validated to
+    //       start Ghost in maintenance mode.
+    // Routing is a bridge between the frontend and API
+    const routing = require('../frontend/services/routing');
+    // We pass the themeService API version here, so that the frontend services are less tightly-coupled
+    routing.bootstrap.start(themeService.getApiVersion());
 
-    var ghostServer, parentApp;
+    const settings = require('./services/settings');
+    const permissions = require('./services/permissions');
+    const xmlrpc = require('./services/xmlrpc');
+    const slack = require('./services/slack');
+    const {mega} = require('./services/mega');
+    const webhooks = require('./services/webhooks');
+    const scheduling = require('./adapters/scheduling');
 
-    // Initialize default internationalization, just for core now
-    // (settings for language and theme not yet available here)
-    common.i18n.init();
-    debug('Default i18n done for core');
-    models.init();
-    debug('models done');
+    debug('`initialiseServices` Start...');
+    const getRoutesHash = () => frontendSettings.getCurrentHash('routes');
 
-    return dbHealth.check().then(function () {
-        debug('DB health check done');
-        // Populate any missing default settings
-        // Refresh the API settings cache
-        return settings.init();
-    }).then(function () {
-        debug('Update settings cache done');
-
-        common.events.emit('db.ready');
-
-        // Full internationalization for core could be here
-        // in a future version with backend translations
-        // (settings for language and theme available here;
-        // internationalization for theme is done
-        // shortly after, when activating the theme)
-        //
+    return Promise.join(
         // Initialize the permissions actions and objects
-        return permissions.init();
-    }).then(function () {
-        debug('Permissions done');
-        return Promise.join(
-            themes.init(),
-            // Initialize apps
-            apps.init(),
-            // Initialize xmrpc ping
-            xmlrpc.listen(),
-            // Initialize slack ping
-            slack.listen(),
-            // Initialize webhook pings
-            webhooks.listen()
-        );
-    }).then(function () {
-        debug('Apps, XMLRPC, Slack done');
-
-        // Setup our collection of express apps
-        parentApp = require('./web/parent-app')();
+        permissions.init(),
+        xmlrpc.listen(),
+        slack.listen(),
+        mega.listen(),
+        webhooks.listen(),
+        settings.syncRoutesHash(getRoutesHash),
+        appService.init(),
+        scheduling.init({
+            // NOTE: When changing API version need to consider how to migrate custom scheduling adapters
+            //       that rely on URL to lookup persisted scheduled records (jobs, etc.). Ref: https://github.com/TryGhost/Ghost/pull/10726#issuecomment-489557162
+            apiUrl: urlUtils.urlFor('api', {version: 'v3', versionType: 'admin'}, true)
+        })
+    ).then(function () {
+        debug('XMLRPC, Slack, MEGA, Webhooks, Scheduling, Permissions done');
 
         // Initialise analytics events
         if (config.get('segment:key')) {
             require('./analytics-events').init();
         }
-
-        debug('Express Apps done');
     }).then(function () {
-        parentApp.use(auth.init());
-        debug('Auth done');
-
-        return new GhostServer(parentApp);
-    }).then(function (_ghostServer) {
-        ghostServer = _ghostServer;
-
-        // scheduling can trigger api requests, that's why we initialize the module after the ghost server creation
-        // scheduling module can create x schedulers with different adapters
-        debug('Server done');
-        return scheduling.init({
-            schedulerUrl: config.get('scheduling').schedulerUrl,
-            active: config.get('scheduling').active,
-            apiUrl: urlService.utils.urlFor('api', true),
-            internalPath: config.get('paths').internalSchedulingPath,
-            contentPath: config.getContentPath('scheduling')
-        });
-    }).then(function () {
-        debug('Scheduling done');
-        debug('...Init End');
-        return ghostServer;
+        debug('...`initialiseServices` End');
     });
 }
 
-module.exports = init;
+/**
+ * - initialise models
+ * - initialise i18n
+ * - load all settings into settings cache (almost every component makes use of this cache)
+ * - load active theme
+ * - create our express apps (site, admin, api)
+ * - start the ghost server
+ * - enable maintenance mode if migrations are missing
+ */
+const minimalRequiredSetupToStartGhost = (dbState) => {
+    const settings = require('./services/settings');
+    const jobService = require('./services/jobs');
+    const models = require('./models');
+    const GhostServer = require('./ghost-server');
+
+    let ghostServer;
+
+    // Initialize Ghost core internationalization
+    i18n.init();
+    debug('Default i18n done for core');
+
+    models.init();
+    debug('Models done');
+
+    return settings.init()
+        .then(() => {
+            debug('Settings done');
+
+            return frontendSettings.init();
+        })
+        .then(() => {
+            debug('Frontend settings done');
+            return themeService.init();
+        })
+        .then(() => {
+            debug('Themes done');
+
+            parentApp = require('./web/parent/app')();
+            debug('Express Apps done');
+
+            return new GhostServer(parentApp);
+        })
+        .then((_ghostServer) => {
+            ghostServer = _ghostServer;
+
+            ghostServer.registerCleanupTask(async () => {
+                await jobService.shutdown();
+            });
+
+            // CASE: all good or db was just initialised
+            if (dbState === 1 || dbState === 2) {
+                events.emit('db.ready');
+
+                return initialiseServices()
+                    .then(() => {
+                        return ghostServer;
+                    });
+            }
+
+            // CASE: migrations required, put blog into maintenance mode
+            if (dbState === 4) {
+                logging.info('Blog is in maintenance mode.');
+
+                config.set('maintenance:enabled', true);
+
+                migrator.migrate()
+                    .then(() => {
+                        return settings.reinit().then(() => {
+                            events.emit('db.ready');
+                            return initialiseServices();
+                        });
+                    })
+                    .then(() => {
+                        config.set('maintenance:enabled', false);
+                        logging.info('Blog is out of maintenance mode.');
+                        return GhostServer.announceServerReadiness();
+                    })
+                    .catch((err) => {
+                        return GhostServer.announceServerReadiness(err)
+                            .finally(() => {
+                                logging.error(err);
+                                setTimeout(() => {
+                                    process.exit(-1);
+                                }, 100);
+                            });
+                    });
+
+                return ghostServer;
+            }
+        });
+};
+
+/**
+ * Connect to database.
+ * Check db state.
+ */
+const isDatabaseInitialisationRequired = () => {
+    const db = require('./data/db/connection');
+    let dbState;
+
+    return migrator.getState()
+        .then((state) => {
+            dbState = state;
+
+            // CASE: db initialisation required, wait till finished
+            if (dbState === 2) {
+                return migrator.dbInit();
+            }
+
+            // CASE: is db incompatible? e.g. you can't connect a 0.11 database with Ghost 1.0 or 2.0
+            if (dbState === 3) {
+                return migrator.isDbCompatible(db)
+                    .then(() => {
+                        dbState = 2;
+                        return migrator.dbInit();
+                    });
+            }
+        })
+        .then(() => {
+            return minimalRequiredSetupToStartGhost(dbState);
+        });
+};
+
+module.exports = isDatabaseInitialisationRequired;

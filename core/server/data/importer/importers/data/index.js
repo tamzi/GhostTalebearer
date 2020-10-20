@@ -1,15 +1,17 @@
-var _ = require('lodash'),
-    Promise = require('bluebird'),
-    sequence = require('../../../../lib/promise/sequence'),
-    models = require('../../../../models'),
-    SubscribersImporter = require('./subscribers'),
-    PostsImporter = require('./posts'),
-    TagsImporter = require('./tags'),
-    SettingsImporter = require('./settings'),
-    UsersImporter = require('./users'),
-    RolesImporter = require('./roles'),
-    importers = {},
-    DataImporter;
+const _ = require('lodash');
+const Promise = require('bluebird');
+const semver = require('semver');
+const {IncorrectUsageError} = require('@tryghost/errors');
+const debug = require('ghost-ignition').debug('importer:data');
+const {sequence} = require('@tryghost/promise');
+const models = require('../../../../models');
+const PostsImporter = require('./posts');
+const TagsImporter = require('./tags');
+const SettingsImporter = require('./settings');
+const UsersImporter = require('./users');
+const RolesImporter = require('./roles');
+let importers = {};
+let DataImporter;
 
 DataImporter = {
     type: 'data',
@@ -23,7 +25,6 @@ DataImporter = {
         importers.users = new UsersImporter(importData.data);
         importers.roles = new RolesImporter(importData.data);
         importers.tags = new TagsImporter(importData.data);
-        importers.subscribers = new SubscribersImporter(importData.data);
         importers.posts = new PostsImporter(importData.data);
         importers.settings = new SettingsImporter(importData.data);
 
@@ -34,19 +35,46 @@ DataImporter = {
     doImport: function doImport(importData, importOptions) {
         importOptions = importOptions || {};
 
-        var ops = [], errors = [], results = [], modelOptions = {
+        const ops = [];
+        let errors = [];
+        let results = [];
+
+        const modelOptions = {
             importing: true,
             context: {
                 internal: true
             }
         };
 
-        if (!importOptions.hasOwnProperty('returnImportedData')) {
+        if (!Object.prototype.hasOwnProperty.call(importOptions, 'returnImportedData')) {
             importOptions.returnImportedData = false;
         }
 
         if (importOptions.importPersistUser) {
             modelOptions.importPersistUser = importOptions.importPersistUser;
+        }
+
+        if (!importData.meta) {
+            return Promise.reject(new IncorrectUsageError({
+                message: 'Wrong importer structure. `meta` is missing.',
+                help: 'https://ghost.org/docs/api/migration/#json-file-structure'
+            }));
+        }
+
+        if (!importData.meta.version) {
+            return Promise.reject(new IncorrectUsageError({
+                message: 'Wrong importer structure. `meta.version` is missing.',
+                help: 'https://ghost.org/docs/api/migration/#json-file-structure'
+            }));
+        }
+
+        // CASE: We deny LTS imports, because these are major version jumps. Only imports from v1 until the latest are supported.
+        //       We can detect a wrong structure by checking the meta version field. Ghost v0 doesn't use semver compliant versions.
+        if (!semver.valid(importData.meta.version)) {
+            return Promise.reject(new IncorrectUsageError({
+                message: 'Detected unsupported file structure.',
+                help: 'Please install Ghost 1.0, import the file and then update your blog to the latest Ghost version.\nVisit https://ghost.org/update/?v=0.1 or ask for help in our https://forum.ghost.org.'
+            }));
         }
 
         this.init(importData);
@@ -104,7 +132,7 @@ DataImporter = {
              * originalData: data from the json file
              * problems: warnings
              */
-            var toReturn = {
+            const toReturn = {
                 data: {},
                 originalData: importData.data,
                 problems: []
@@ -119,8 +147,14 @@ DataImporter = {
             });
 
             return toReturn;
-        }).catch(function (errors) {
-            return Promise.reject(errors);
+        }).catch(function (err) {
+            debug(err);
+            return Promise.reject(err);
+        }).finally(() => {
+            // release memory
+            importers = {};
+            results = null;
+            importData = null;
         });
     }
 };

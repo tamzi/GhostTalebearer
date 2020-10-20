@@ -1,13 +1,12 @@
-var moment = require('moment-timezone'),
-    Promise = require('bluebird'),
-    _ = require('lodash'),
-    common = require('../../lib/common');
+const moment = require('moment-timezone');
+const Promise = require('bluebird');
+const _ = require('lodash');
+const errors = require('@tryghost/errors');
 
 module.exports = function (Bookshelf) {
-    var ParentModel = Bookshelf.Model,
-        Model;
+    const ParentModel = Bookshelf.Model;
 
-    Model = Bookshelf.Model.extend({
+    const Model = Bookshelf.Model.extend({
         /**
          * Update collision protection.
          *
@@ -24,9 +23,9 @@ module.exports = function (Bookshelf) {
          * the same current database values and both would succeed to update and override each other.
          */
         sync: function timestamp(options) {
-            var parentSync = ParentModel.prototype.sync.apply(this, arguments),
-                originalUpdateSync = parentSync.update,
-                self = this;
+            const parentSync = ParentModel.prototype.sync.apply(this, arguments);
+            const originalUpdateSync = parentSync.update;
+            const self = this;
 
             // CASE: only enabled for posts table
             if (this.tableName !== 'posts' ||
@@ -46,30 +45,33 @@ module.exports = function (Bookshelf) {
              * HTML is always auto generated, ignore.
              */
             parentSync.update = function update() {
-                var changed = _.omit(self.changed, [
-                        'created_at', 'updated_at', 'author_id', 'id',
-                        'published_by', 'updated_by', 'html', 'plaintext'
-                    ]),
-                    clientUpdatedAt = moment(self.clientData.updated_at || self.serverData.updated_at || new Date()),
-                    serverUpdatedAt = moment(self.serverData.updated_at || clientUpdatedAt);
+                return originalUpdateSync.apply(this, arguments)
+                    .then((response) => {
+                        const changed = _.omit(self._changed, [
+                            'created_at', 'updated_at', 'author_id', 'id',
+                            'published_by', 'updated_by', 'html', 'plaintext'
+                        ]);
 
-                if (Object.keys(changed).length) {
-                    if (clientUpdatedAt.diff(serverUpdatedAt) !== 0) {
-                        // @TODO: Remove later. We want to figure out how many people experience the error in which context.
-                        return Promise.reject(new common.errors.UpdateCollisionError({
-                            message: 'Saving failed! Someone else is editing this post.',
-                            code: 'UPDATE_COLLISION',
-                            level: 'critical',
-                            context: JSON.stringify({
-                                clientUpdatedAt: self.clientData.updated_at,
-                                serverUpdatedAt: self.serverData.updated_at,
-                                changed: changed
-                            })
-                        }));
-                    }
-                }
+                        const clientUpdatedAt = moment(self.clientData.updated_at || self.serverData.updated_at || new Date());
+                        const serverUpdatedAt = moment(self.serverData.updated_at || clientUpdatedAt);
 
-                return originalUpdateSync.apply(this, arguments);
+                        if (Object.keys(changed).length) {
+                            if (clientUpdatedAt.diff(serverUpdatedAt) !== 0) {
+                                // @NOTE: This will rollback the update. We cannot know if relations were updated before doing the update.
+                                return Promise.reject(new errors.UpdateCollisionError({
+                                    message: 'Saving failed! Someone else is editing this post.',
+                                    code: 'UPDATE_COLLISION',
+                                    level: 'critical',
+                                    errorDetails: {
+                                        clientUpdatedAt: self.clientData.updated_at,
+                                        serverUpdatedAt: self.serverData.updated_at
+                                    }
+                                }));
+                            }
+                        }
+
+                        return response;
+                    });
             };
 
             return parentSync;

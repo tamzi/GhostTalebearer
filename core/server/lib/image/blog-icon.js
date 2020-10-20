@@ -1,17 +1,13 @@
-var sizeOf = require('image-size'),
-    Promise = require('bluebird'),
-    _ = require('lodash'),
-    path = require('path'),
-    config = require('../../config'),
-    common = require('../common'),
-    settingsCache = require('../../services/settings/cache'),
-    urlService = require('../../services/url'),
-    storageUtils = require('../../adapters/storage/utils'),
-    getIconDimensions,
-    isIcoImageType,
-    getIconType,
-    getIconUrl,
-    getIconPath;
+const sizeOf = require('image-size');
+const Promise = require('bluebird');
+const _ = require('lodash');
+const path = require('path');
+const config = require('../../../shared/config');
+const {i18n} = require('../common');
+const errors = require('@tryghost/errors');
+const urlUtils = require('../../../shared/url-utils');
+const settingsCache = require('../../services/settings/cache');
+const storageUtils = require('../../adapters/storage/utils');
 
 /**
  * Get dimensions for ico file from its real file storage path
@@ -20,12 +16,12 @@ var sizeOf = require('image-size'),
  * @returns {Promise<Object>} getIconDimensions
  * @description Takes a file path and returns ico width and height.
  */
-getIconDimensions = function getIconDimensions(path) {
+const getIconDimensions = function getIconDimensions(storagePath) {
     return new Promise(function getIconSize(resolve, reject) {
-        var dimensions;
+        let dimensions;
 
         try {
-            dimensions = sizeOf(path);
+            dimensions = sizeOf(storagePath);
 
             if (dimensions.images) {
                 dimensions.width = _.maxBy(dimensions.images, function (w) {
@@ -41,9 +37,9 @@ getIconDimensions = function getIconDimensions(path) {
                 height: dimensions.height
             });
         } catch (err) {
-            return reject(new common.errors.ValidationError({
-                message: common.i18n.t('errors.utils.blogIcon.error', {
-                    file: path,
+            return reject(new errors.ValidationError({
+                message: i18n.t('errors.utils.blogIcon.error', {
+                    file: storagePath,
                     error: err.message
                 })
             }));
@@ -58,8 +54,8 @@ getIconDimensions = function getIconDimensions(path) {
  * @returns {Boolean} true if submitted path is .ico file
  * @description Takes a path and returns boolean value.
  */
-isIcoImageType = function isIcoImageType(icon) {
-    var blogIcon = icon || settingsCache.get('icon');
+const isIcoImageType = function isIcoImageType(icon) {
+    const blogIcon = icon || settingsCache.get('icon');
 
     return blogIcon.match(/.ico$/i) ? true : false;
 };
@@ -71,8 +67,8 @@ isIcoImageType = function isIcoImageType(icon) {
  * @returns {Boolean} true if submitted path is .ico file
  * @description Takes a path and returns boolean value.
  */
-getIconType = function getIconType(icon) {
-    var blogIcon = icon || settingsCache.get('icon');
+const getIconType = function getIconType(icon) {
+    const blogIcon = icon || settingsCache.get('icon');
 
     return isIcoImageType(blogIcon) ? 'x-icon' : 'png';
 };
@@ -84,20 +80,20 @@ getIconType = function getIconType(icon) {
  * @description Checks if we have a custom uploaded icon and the extension of it. If no custom uploaded icon
  * exists, we're returning the default `favicon.ico`
  */
-getIconUrl = function getIconUrl(absolut) {
-    var blogIcon = settingsCache.get('icon');
+const getIconUrl = function getIconUrl(absolut) {
+    const blogIcon = settingsCache.get('icon');
 
     if (absolut) {
         if (blogIcon) {
-            return isIcoImageType(blogIcon) ? urlService.utils.urlFor({relativeUrl: '/favicon.ico'}, true) : urlService.utils.urlFor({relativeUrl: '/favicon.png'}, true);
+            return isIcoImageType(blogIcon) ? urlUtils.urlFor({relativeUrl: '/favicon.ico'}, true) : urlUtils.urlFor({relativeUrl: '/favicon.png'}, true);
         } else {
-            return urlService.utils.urlFor({relativeUrl: '/favicon.ico'}, true);
+            return urlUtils.urlFor({relativeUrl: '/favicon.ico'}, true);
         }
     } else {
         if (blogIcon) {
-            return isIcoImageType(blogIcon) ? urlService.utils.urlFor({relativeUrl: '/favicon.ico'}) : urlService.utils.urlFor({relativeUrl: '/favicon.png'});
+            return isIcoImageType(blogIcon) ? urlUtils.urlFor({relativeUrl: '/favicon.ico'}) : urlUtils.urlFor({relativeUrl: '/favicon.png'});
         } else {
-            return urlService.utils.urlFor({relativeUrl: '/favicon.ico'});
+            return urlUtils.urlFor({relativeUrl: '/favicon.ico'});
         }
     }
 };
@@ -109,8 +105,8 @@ getIconUrl = function getIconUrl(absolut) {
  * @description Checks if we have a custom uploaded icon. If no custom uploaded icon
  * exists, we're returning the default `favicon.ico`
  */
-getIconPath = function getIconPath() {
-    var blogIcon = settingsCache.get('icon');
+const getIconPath = function getIconPath() {
+    const blogIcon = settingsCache.get('icon');
 
     if (blogIcon) {
         return storageUtils.getLocalFileStoragePath(blogIcon);

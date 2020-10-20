@@ -1,7 +1,7 @@
-const debug = require('ghost-ignition').debug('importer:users'),
-    _ = require('lodash'),
-    BaseImporter = require('./base'),
-    models = require('../../../../models');
+const debug = require('ghost-ignition').debug('importer:users');
+const _ = require('lodash');
+const BaseImporter = require('./base');
+const models = require('../../../../models');
 
 class UsersImporter extends BaseImporter {
     constructor(allDataFromFile) {
@@ -10,13 +10,6 @@ class UsersImporter extends BaseImporter {
             dataKeyToImport: 'users',
             requiredFromFile: ['roles', 'roles_users']
         });
-
-        // Map legacy keys
-        this.legacyKeys = {
-            image: 'profile_image',
-            cover: 'cover_image',
-            last_login: 'last_seen'
-        };
     }
 
     fetchExisting(modelOptions) {
@@ -37,18 +30,12 @@ class UsersImporter extends BaseImporter {
     beforeImport() {
         debug('beforeImport');
 
-        let role, lookup = {};
-
-        // Remove legacy field language
-        this.dataToImport = _.filter(this.dataToImport, (data) => {
-            return _.omit(data, 'language');
-        });
-
-        this.dataToImport = this.dataToImport.map(this.legacyMapper);
+        let role;
+        let lookup = {};
 
         // NOTE: sort out duplicated roles based on incremental id
         _.each(this.requiredFromFile.roles_users, (attachedRole) => {
-            if (lookup.hasOwnProperty(attachedRole.user_id)) {
+            if (Object.prototype.hasOwnProperty.call(lookup, attachedRole.user_id)) {
                 if (lookup[attachedRole.user_id].id < attachedRole.id) {
                     lookup[attachedRole.user_id] = attachedRole;
                 }
@@ -60,9 +47,9 @@ class UsersImporter extends BaseImporter {
         this.requiredFromFile.roles_users = _.toArray(lookup);
 
         _.each(this.requiredFromFile.roles_users, (attachedRole) => {
-            role = _.find(this.requiredFromFile.roles, (role) => {
-                if (attachedRole.role_id === role.id) {
-                    return role;
+            role = _.find(this.requiredFromFile.roles, (requiredRole) => {
+                if (attachedRole.role_id === requiredRole.id) {
+                    return requiredRole;
                 }
             });
 

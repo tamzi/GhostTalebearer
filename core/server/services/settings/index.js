@@ -2,98 +2,47 @@
  * Settings Lib
  * A collection of utilities for handling settings including a cache
  */
-const _ = require('lodash'),
-    SettingsModel = require('../../models/settings').Settings,
-    SettingsCache = require('./cache'),
-    SettingsLoader = require('./loader'),
-    // EnsureSettingsFiles = require('./ensure-settings'),
-    common = require('../../lib/common'),
-    debug = require('ghost-ignition').debug('services:settings:index');
+const models = require('../../models');
+const SettingsCache = require('./cache');
 
 module.exports = {
-    init: function init() {
-        const knownSettings = this.knownSettings();
-
-        debug('init settings service for:', knownSettings);
-
-        // TODO: uncomment this section, once we want to
-        // copy the default routes.yaml file into the /content/settings
-        // folder
-
-        // Make sure that supported settings files are available
-        // inside of the `content/setting` directory
-        // return EnsureSettingsFiles(knownSettings)
-        //     .then(() => {
-
-        // Update the defaults
-        return SettingsModel.populateDefaults()
-            .then(function (settingsCollection) {
-                // Initialise the cache with the result
-                // This will bind to events for further updates
-                SettingsCache.init(settingsCollection);
-            });
-        // });
+    async init() {
+        const settingsCollection = await models.Settings.populateDefaults();
+        SettingsCache.init(settingsCollection);
     },
 
-    /**
-    * Global place to switch on more available settings.
-    */
-    knownSettings: function knownSettings() {
-        return ['routes'];
-    },
+    async reinit() {
+        const oldSettings = SettingsCache.getAll();
 
-    /**
-     * Getter for YAML settings.
-     * Example: `settings.get('routes').then(...)`
-     * will return an Object like this:
-     * {routes: {}, collections: {}, resources: {}}
-     * @param {String} setting type of supported setting.
-     * @returns {Object} settingsFile
-     * @description Returns settings object as defined per YAML files in
-     * `/content/settings` directory.
-     */
-    get: function get(setting) {
-        const knownSettings = this.knownSettings();
+        SettingsCache.shutdown();
+        const settingsCollection = await models.Settings.populateDefaults();
+        const newSettings = SettingsCache.init(settingsCollection);
 
-        // CASE: this should be an edge case and only if internal usage of the
-        // getter is incorrect.
-        if (!setting || _.indexOf(knownSettings, setting) < 0) {
-            throw new common.errors.IncorrectUsageError({
-                message: `Requested setting is not supported: '${setting}'.`,
-                help: `Please use only the supported settings: ${knownSettings}.`
-            });
+        for (const model of settingsCollection.models) {
+            const key = model.attributes.key;
+
+            // The type of setting is object. That's why we need to compare the value of the `value` property.
+            if (newSettings[key].value !== oldSettings[key].value) {
+                model.emitChange(key + '.' + 'edited', {});
+            }
         }
-
-        return SettingsLoader(setting);
     },
 
     /**
-     * Getter for all YAML settings.
-     * Example: `settings.getAll().then(...)`
-     * will return an Object like this (assuming we're supporting `routes`
-     * and `globals`):
-     * {
-     *     routes: {
-     *         routes: null,
-     *         collections: { '/': [Object] },
-     *         resources: { tag: '/tag/{slug}/', author: '/author/{slug}/' }
-     *     },
-     *     globals: {
-     *         config: { url: 'testblog.com' }
-     *     }
-     * }
-     * @returns {Object} settingsObject
-     * @description Returns all settings object as defined per YAML files in
-     * `/content/settings` directory.
+     * Handles syncronization of routes.yaml hash loaded in the frontend with
+     * the value stored in the settings table.
+     * getRoutesHash is a function to allow keeping "frontend" decoupled from settings
+     *
+     * @param {function} getRoutesHash function fetching currently loaded routes file hash
      */
-    getAll: function getAll() {
-        const knownSettings = this.knownSettings(),
-            settingsToReturn = {};
+    async syncRoutesHash(getRoutesHash) {
+        const currentRoutesHash = await getRoutesHash();
 
-        _.each(knownSettings, function (setting) {
-            settingsToReturn[setting] = SettingsLoader(setting);
-        });
-
-        return settingsToReturn;
+        if (SettingsCache.get('routes_hash') !== currentRoutesHash) {
+            return await models.Settings.edit([{
+                key: 'routes_hash',
+                value: currentRoutesHash
+            }], {context: {internal: true}});
+        }
     }
 };

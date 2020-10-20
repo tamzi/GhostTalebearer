@@ -1,11 +1,21 @@
-const Promise = require('bluebird'),
-    ghostBookshelf = require('./base');
-
-let Webhook,
-    Webhooks;
+const Promise = require('bluebird');
+const ghostBookshelf = require('./base');
+let Webhook;
+let Webhooks;
 
 Webhook = ghostBookshelf.Model.extend({
     tableName: 'webhooks',
+
+    defaults() {
+        return {
+            api_version: 'v3',
+            status: 'available'
+        };
+    },
+
+    integration() {
+        return this.belongsTo('Integration');
+    },
 
     emitChange: function emitChange(event, options) {
         const eventToTrigger = 'webhook' + '.' + event;
@@ -13,20 +23,26 @@ Webhook = ghostBookshelf.Model.extend({
     },
 
     onCreated: function onCreated(model, response, options) {
+        ghostBookshelf.Model.prototype.onCreated.apply(this, arguments);
+
         model.emitChange('added', options);
     },
 
     onUpdated: function onUpdated(model, response, options) {
+        ghostBookshelf.Model.prototype.onUpdated.apply(this, arguments);
+
         model.emitChange('edited', options);
     },
 
     onDestroyed: function onDestroyed(model, options) {
+        ghostBookshelf.Model.prototype.onDestroyed.apply(this, arguments);
+
         model.emitChange('deleted', options);
     }
 }, {
     findAllByEvent: function findAllByEvent(event, unfilteredOptions) {
-        var options = this.filterOptions(unfilteredOptions, 'findAll'),
-            webhooksCollection = Webhooks.forge();
+        const options = this.filterOptions(unfilteredOptions, 'findAll');
+        const webhooksCollection = Webhooks.forge();
 
         return webhooksCollection
             .query('where', 'event', '=', event)
@@ -34,11 +50,11 @@ Webhook = ghostBookshelf.Model.extend({
     },
 
     getByEventAndTarget: function getByEventAndTarget(event, targetUrl, unfilteredOptions) {
-        var options = ghostBookshelf.Model.filterOptions(unfilteredOptions, 'getByEventAndTarget');
+        const options = ghostBookshelf.Model.filterOptions(unfilteredOptions, 'getByEventAndTarget');
         options.require = true;
 
         return Webhooks.forge().fetch(options).then(function then(webhooks) {
-            var webhookWithEventAndTarget = webhooks.find(function findWebhook(webhook) {
+            const webhookWithEventAndTarget = webhooks.find(function findWebhook(webhook) {
                 return webhook.get('event').toLowerCase() === event.toLowerCase()
                     && webhook.get('target_url').toLowerCase() === targetUrl.toLowerCase();
             });
