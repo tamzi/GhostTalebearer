@@ -258,6 +258,14 @@
             },
             "type": "string"
         },
+        "members_free_signup_redirect": {
+            "defaultValue": "/",
+            "type": "string"
+        },
+        "members_paid_signup_redirect": {
+            "defaultValue": "/",
+            "type": "string"
+        },
         "stripe_product_name": {
             "defaultValue": "Ghost Subscription",
             "type": "string"
@@ -345,6 +353,14 @@
         "mailgun_base_url": {
             "defaultValue": null,
             "type": "string"
+        },
+        "email_track_opens": {
+            "defaultValue": "true",
+            "validations": {
+                "isEmpty": false,
+                "isIn": [["true", "false"]]
+            },
+            "type": "boolean"
         }
     },
     "amp": {
@@ -360,28 +376,93 @@
             "type": "string"
         }
     },
-    "labs": {
-        "labs": {
-            "defaultValue": "{}",
-            "type": "object"
+    "firstpromoter": {
+        "firstpromoter": {
+            "defaultValue": "false",
+            "validations": {
+                "isIn": [
+                    [
+                        "true",
+                        "false"
+                    ]
+                ]
+            },
+            "type": "boolean"
+        },
+        "firstpromoter_id": {
+            "defaultValue": null,
+            "type": "string"
         }
     },
     "slack": {
-        "slack": {
-            "defaultValue": "[{\"url\":\"\", \"username\":\"Ghost\"}]",
-            "type": "array"
+        "slack_url": {
+            "defaultValue": "",
+            "type": "string"
+        },
+        "slack_username": {
+            "defaultValue": "Ghost",
+            "type": "string"
         }
     },
     "unsplash": {
         "unsplash": {
-            "defaultValue": "{\"isActive\": true}",
-            "type": "object"
+            "defaultValue": "true",
+            "validations": {
+                "isEmpty": false,
+                "isIn": [["true", "false"]]
+            },
+            "type": "boolean"
         }
     },
     "views": {
         "shared_views": {
             "defaultValue": "[]",
             "type": "array"
+        }
+    },
+    "newsletter": {
+        "newsletter_show_badge": {
+            "defaultValue": "true",
+            "validations": {
+                "isEmpty": false,
+                "isIn": [
+                    [
+                        "true",
+                        "false"
+                    ]
+                ]
+            },
+            "type": "boolean"
+        },
+        "newsletter_show_header": {
+            "defaultValue": "true",
+            "validations": {
+                "isEmpty": false,
+                "isIn": [
+                    [
+                        "true",
+                        "false"
+                    ]
+                ]
+            },
+            "type": "boolean"
+        },
+        "newsletter_body_font_category": {
+            "defaultValue": "sans_serif",
+            "validations": {
+                "isEmpty": false,
+                "isIn": [
+                    [
+                        "serif",
+                        "sans_serif"
+                    ]
+                ]
+            },
+            "type": "string"
+        },
+        "newsletter_footer_content": {
+            "defaultValue": "",
+            "type": "string"
         }
     }
 }

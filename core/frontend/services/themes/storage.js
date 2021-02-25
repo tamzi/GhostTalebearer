@@ -8,7 +8,7 @@ const themeLoader = require('./loader');
 const toJSON = require('./to-json');
 
 const settingsCache = require('../../../server/services/settings/cache');
-const {i18n} = require('../../../server/lib/common');
+const {i18n} = require('../proxy');
 const logging = require('../../../shared/logging');
 const errors = require('@tryghost/errors');
 const debug = require('ghost-ignition').debug('api:themes');
@@ -48,6 +48,7 @@ module.exports = {
         }
 
         let checkedTheme;
+        let renamedExisting = false;
 
         return validate.checkSafe(zip, true)
             .then((_checkedTheme) => {
@@ -58,6 +59,7 @@ module.exports = {
             .then((themeExists) => {
                 // CASE: move the existing theme to a backup folder
                 if (themeExists) {
+                    renamedExisting = true;
                     return getStorage().rename(shortName, backupName);
                 }
             })
@@ -85,6 +87,20 @@ module.exports = {
                     themeOverridden: overrideTheme,
                     theme: toJSON(shortName, checkedTheme)
                 };
+            })
+            .catch((error) => {
+                // restore backup if we renamed an existing theme but saving failed
+                if (renamedExisting) {
+                    return getStorage().exists(shortName).then((themeExists) => {
+                        if (!themeExists) {
+                            return getStorage().rename(backupName, shortName).then(() => {
+                                throw error;
+                            });
+                        }
+                    });
+                }
+
+                throw error;
             })
             .finally(() => {
                 // @TODO: we should probably do this as part of saving the theme

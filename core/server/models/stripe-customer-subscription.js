@@ -1,14 +1,5 @@
 const ghostBookshelf = require('./base');
 
-const CURRENCY_SYMBOLS = {
-    usd: '$',
-    aud: '$',
-    cad: '$',
-    gbp: '£',
-    eur: '€',
-    inr: '₹'
-};
-
 const StripeCustomerSubscription = ghostBookshelf.Model.extend({
     tableName: 'members_stripe_customers_subscriptions',
 
@@ -32,13 +23,13 @@ const StripeCustomerSubscription = ghostBookshelf.Model.extend({
                 nickname: defaultSerializedObject.plan_nickname,
                 amount: defaultSerializedObject.plan_amount,
                 interval: defaultSerializedObject.plan_interval,
-                currency: String.prototype.toUpperCase.call(defaultSerializedObject.plan_currency),
-                currency_symbol: CURRENCY_SYMBOLS[String.prototype.toLowerCase.call(defaultSerializedObject.plan_currency)]
+                currency: String.prototype.toUpperCase.call(defaultSerializedObject.plan_currency)
             },
             status: defaultSerializedObject.status,
             start_date: defaultSerializedObject.start_date,
             default_payment_card_last4: defaultSerializedObject.default_payment_card_last4,
             cancel_at_period_end: defaultSerializedObject.cancel_at_period_end,
+            cancellation_reason: defaultSerializedObject.cancellation_reason,
             current_period_end: defaultSerializedObject.current_period_end
         };
     }

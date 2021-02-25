@@ -12,7 +12,7 @@ module.exports = {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
         uuid: {type: 'string', maxlength: 36, nullable: false, validations: {isUUID: true}},
         title: {type: 'string', maxlength: 2000, nullable: false, validations: {isLength: {max: 255}}},
-        slug: {type: 'string', maxlength: 191, nullable: false, unique: true},
+        slug: {type: 'string', maxlength: 191, nullable: false},
         mobiledoc: {type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true},
         html: {type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true},
         comment_id: {type: 'string', maxlength: 50, nullable: true},
@@ -21,6 +21,7 @@ module.exports = {
         featured: {type: 'bool', nullable: false, defaultTo: false},
         type: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'post', validations: {isIn: [['post', 'page']]}},
         status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft'},
+        // NOTE: unused at the moment and reserved for future features
         locale: {type: 'string', maxlength: 6, nullable: true},
         visibility: {
             type: 'string',
@@ -29,7 +30,13 @@ module.exports = {
             defaultTo: 'public',
             validations: {isIn: [['public', 'members', 'paid']]}
         },
-        send_email_when_published: {type: 'bool', nullable: true, defaultTo: false},
+        email_recipient_filter: {
+            type: 'string',
+            maxlength: 50,
+            nullable: false,
+            defaultTo: 'none',
+            validations: {isIn: [['none', 'all', 'free', 'paid']]}
+        },
         /**
          * @deprecated: `author_id`, might be removed in Ghost 3.0
          * If we keep it, then only, because you can easier query post.author_id than posts_authors[*].sort_order.
@@ -50,7 +57,10 @@ module.exports = {
         codeinjection_head: {type: 'text', maxlength: 65535, nullable: true},
         codeinjection_foot: {type: 'text', maxlength: 65535, nullable: true},
         custom_template: {type: 'string', maxlength: 100, nullable: true},
-        canonical_url: {type: 'text', maxlength: 2000, nullable: true}
+        canonical_url: {type: 'text', maxlength: 2000, nullable: true},
+        '@@UNIQUE_CONSTRAINTS@@': [
+            ['slug', 'type']
+        ]
     },
     posts_meta: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
@@ -63,7 +73,8 @@ module.exports = {
         twitter_description: {type: 'string', maxlength: 500, nullable: true},
         meta_title: {type: 'string', maxlength: 2000, nullable: true, validations: {isLength: {max: 300}}},
         meta_description: {type: 'string', maxlength: 2000, nullable: true, validations: {isLength: {max: 500}}},
-        email_subject: {type: 'string', maxlength: 300, nullable: true}
+        email_subject: {type: 'string', maxlength: 300, nullable: true},
+        frontmatter: {type: 'text', maxlength: 65535, nullable: true}
     },
     users: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
@@ -80,6 +91,7 @@ module.exports = {
         twitter: {type: 'string', maxlength: 2000, nullable: true},
         accessibility: {type: 'text', maxlength: 65535, nullable: true},
         status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'active'},
+        // NOTE: unused at the moment and reserved for future features
         locale: {type: 'string', maxlength: 6, nullable: true},
         visibility: {
             type: 'string',
@@ -138,11 +150,6 @@ module.exports = {
         role_id: {type: 'string', maxlength: 24, nullable: false},
         permission_id: {type: 'string', maxlength: 24, nullable: false}
     },
-    permissions_apps: {
-        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
-        app_id: {type: 'string', maxlength: 24, nullable: false},
-        permission_id: {type: 'string', maxlength: 24, nullable: false}
-    },
     settings: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
         group: {
@@ -168,20 +175,18 @@ module.exports = {
             }
         },
         key: {type: 'string', maxlength: 50, nullable: false, unique: true},
+        // NOTE: as JSON objects are no longer stored in `value` we could pottentialy reduce the maxlength
         value: {type: 'text', maxlength: 65535, nullable: true},
         type: {
             type: 'string',
             maxlength: 50,
             nullable: false,
-            defaultTo: 'core',
             validations: {
                 isIn: [[
                     'array',
                     'string',
                     'number',
-                    'boolean',
-                    // TODO: `object` type needs to be removed once all existing object settings are removed
-                    'object'
+                    'boolean'
                 ]]
             }
         },
@@ -227,41 +232,6 @@ module.exports = {
         post_id: {type: 'string', maxlength: 24, nullable: false, references: 'posts.id'},
         tag_id: {type: 'string', maxlength: 24, nullable: false, references: 'tags.id'},
         sort_order: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0}
-    },
-    apps: {
-        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
-        name: {type: 'string', maxlength: 191, nullable: false, unique: true},
-        slug: {type: 'string', maxlength: 191, nullable: false, unique: true},
-        version: {type: 'string', maxlength: 50, nullable: false},
-        status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'inactive'},
-        created_at: {type: 'dateTime', nullable: false},
-        created_by: {type: 'string', maxlength: 24, nullable: false},
-        updated_at: {type: 'dateTime', nullable: true},
-        updated_by: {type: 'string', maxlength: 24, nullable: true}
-    },
-    app_settings: {
-        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
-        key: {type: 'string', maxlength: 50, nullable: false, unique: true},
-        value: {type: 'text', maxlength: 65535, nullable: true},
-        app_id: {type: 'string', maxlength: 24, nullable: false, references: 'apps.id'},
-        created_at: {type: 'dateTime', nullable: false},
-        created_by: {type: 'string', maxlength: 24, nullable: false},
-        updated_at: {type: 'dateTime', nullable: true},
-        updated_by: {type: 'string', maxlength: 24, nullable: true}
-    },
-    app_fields: {
-        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
-        key: {type: 'string', maxlength: 50, nullable: false},
-        value: {type: 'text', maxlength: 65535, nullable: true},
-        type: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'html'},
-        app_id: {type: 'string', maxlength: 24, nullable: false, references: 'apps.id'},
-        relatable_id: {type: 'string', maxlength: 24, nullable: false},
-        relatable_type: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'posts'},
-        active: {type: 'bool', nullable: false, defaultTo: true},
-        created_at: {type: 'dateTime', nullable: false},
-        created_by: {type: 'string', maxlength: 24, nullable: false},
-        updated_at: {type: 'dateTime', nullable: true},
-        updated_by: {type: 'string', maxlength: 24, nullable: true}
     },
     invites: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
@@ -349,6 +319,7 @@ module.exports = {
         role_id: {type: 'string', maxlength: 24, nullable: true},
         // integration_id is nullable to allow "internal" API keys that don't show in the UI
         integration_id: {type: 'string', maxlength: 24, nullable: true},
+        user_id: {type: 'string', maxlength: 24, nullable: true},
         last_seen_at: {type: 'dateTime', nullable: true},
         last_seen_version: {type: 'string', maxlength: 50, nullable: true},
         created_at: {type: 'dateTime', nullable: false},
@@ -367,14 +338,71 @@ module.exports = {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
         uuid: {type: 'string', maxlength: 36, nullable: true, unique: true, validations: {isUUID: true}},
         email: {type: 'string', maxlength: 191, nullable: false, unique: true, validations: {isEmail: true}},
+        status: {
+            type: 'string', maxlength: 50, nullable: false, defaultTo: 'free', validations: {
+                isIn: [['free', 'paid', 'comped']]
+            }
+        },
         name: {type: 'string', maxlength: 191, nullable: true},
         note: {type: 'string', maxlength: 2000, nullable: true},
         geolocation: {type: 'string', maxlength: 2000, nullable: true},
         subscribed: {type: 'bool', nullable: true, defaultTo: true},
+        email_count: {type: 'integer', unsigned: true, nullable: false, defaultTo: 0},
+        email_opened_count: {type: 'integer', unsigned: true, nullable: false, defaultTo: 0},
+        email_open_rate: {type: 'integer', unsigned: true, nullable: true, index: true},
         created_at: {type: 'dateTime', nullable: false},
         created_by: {type: 'string', maxlength: 24, nullable: false},
         updated_at: {type: 'dateTime', nullable: true},
         updated_by: {type: 'string', maxlength: 24, nullable: true}
+    },
+    members_payment_events: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        member_id: {type: 'string', maxlength: 24, nullable: false, references: 'members.id', cascadeDelete: true},
+        amount: {type: 'integer', nullable: false},
+        currency: {type: 'string', maxLength: 3, nullable: false},
+        source: {type: 'string', maxlength: 50, nullable: false},
+        created_at: {type: 'dateTime', nullable: false}
+    },
+    members_login_events: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        member_id: {type: 'string', maxlength: 24, nullable: false, references: 'members.id', cascadeDelete: true},
+        created_at: {type: 'dateTime', nullable: false}
+    },
+    members_email_change_events: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        member_id: {type: 'string', maxlength: 24, nullable: false, references: 'members.id', cascadeDelete: true},
+        to_email: {type: 'string', maxlength: 191, nullable: false, unique: false, validations: {isEmail: true}},
+        from_email: {type: 'string', maxlength: 191, nullable: false, unique: false, validations: {isEmail: true}},
+        created_at: {type: 'dateTime', nullable: false}
+    },
+    members_status_events: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        member_id: {type: 'string', maxlength: 24, nullable: false, references: 'members.id', cascadeDelete: true},
+        from_status: {
+            type: 'string', maxlength: 50, nullable: true, validations: {
+                isIn: [['free', 'paid', 'comped']]
+            }
+        },
+        to_status: {
+            type: 'string', maxlength: 50, nullable: true, validations: {
+                isIn: [['free', 'paid', 'comped']]
+            }
+        },
+        created_at: {type: 'dateTime', nullable: false}
+    },
+    members_paid_subscription_events: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        member_id: {type: 'string', maxlength: 24, nullable: false, references: 'members.id', cascadeDelete: true},
+        from_plan: {type: 'string', maxlength: 255, nullable: true},
+        to_plan: {type: 'string', maxlength: 255, nullable: true},
+        currency: {type: 'string', maxLength: 3, nullable: false},
+        source: {
+            type: 'string', maxlength: 50, nullable: false, validations: {
+                isIn: [['stripe']]
+            }
+        },
+        mrr_delta: {type: 'integer', nullable: false},
+        created_at: {type: 'dateTime', nullable: false}
     },
     labels: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
@@ -409,6 +437,7 @@ module.exports = {
         plan_id: {type: 'string', maxlength: 255, nullable: false, unique: false},
         status: {type: 'string', maxlength: 50, nullable: false},
         cancel_at_period_end: {type: 'bool', nullable: false, defaultTo: false},
+        cancellation_reason: {type: 'string', maxlength: 500, nullable: true},
         current_period_end: {type: 'dateTime', nullable: false},
         start_date: {type: 'dateTime', nullable: false},
         default_payment_card_last4: {type: 'string', maxlength: 4, nullable: true},
@@ -421,6 +450,13 @@ module.exports = {
         plan_interval: {type: 'string', maxlength: 50, nullable: false},
         plan_amount: {type: 'integer', nullable: false},
         plan_currency: {type: 'string', maxLength: 3, nullable: false}
+    },
+    members_subscribe_events: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        member_id: {type: 'string', maxlength: 24, nullable: false, unique: false, references: 'members.id', cascadeDelete: true},
+        subscribed: {type: 'bool', nullable: false, defaultTo: true},
+        created_at: {type: 'dateTime', nullable: false},
+        source: {type: 'string', maxlength: 50, nullable: true}
     },
     actions: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
@@ -446,16 +482,25 @@ module.exports = {
             defaultTo: 'pending',
             validations: {isIn: [['pending', 'submitting', 'submitted', 'failed']]}
         },
+        recipient_filter: {
+            type: 'string',
+            maxlength: 50,
+            nullable: false,
+            defaultTo: 'paid',
+            validations: {isIn: [['all', 'free', 'paid']]}
+        },
         error: {type: 'string', maxlength: 2000, nullable: true},
         error_data: {type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true},
-        meta: {type: 'text', maxlength: 65535, nullable: true},
-        stats: {type: 'text', maxlength: 65535, nullable: true},
         email_count: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
+        delivered_count: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
+        opened_count: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
+        failed_count: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
         subject: {type: 'string', maxlength: 300, nullable: true},
         from: {type: 'string', maxlength: 2000, nullable: true},
         reply_to: {type: 'string', maxlength: 2000, nullable: true},
         html: {type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true},
         plaintext: {type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true},
+        track_opens: {type: 'bool', nullable: false, defaultTo: false},
         submitted_at: {type: 'dateTime', nullable: false},
         created_at: {type: 'dateTime', nullable: false},
         created_by: {type: 'string', maxlength: 24, nullable: false},
@@ -482,9 +527,15 @@ module.exports = {
         member_id: {type: 'string', maxlength: 24, nullable: false, index: true},
         batch_id: {type: 'string', maxlength: 24, nullable: false, references: 'email_batches.id'},
         processed_at: {type: 'dateTime', nullable: true},
+        delivered_at: {type: 'dateTime', nullable: true, index: true},
+        opened_at: {type: 'dateTime', nullable: true, index: true},
+        failed_at: {type: 'dateTime', nullable: true, index: true},
         member_uuid: {type: 'string', maxlength: 36, nullable: false},
         member_email: {type: 'string', maxlength: 191, nullable: false},
-        member_name: {type: 'string', maxlength: 191, nullable: true}
+        member_name: {type: 'string', maxlength: 191, nullable: true},
+        '@@INDEXES@@': [
+            ['email_id', 'member_email']
+        ]
     },
     tokens: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},

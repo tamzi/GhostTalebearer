@@ -2,13 +2,12 @@
 // Usage: `{{ghost_head}}`
 //
 // Outputs scripts and other assets at the top of a Ghost theme
-const {metaData, escapeExpression, SafeString, logging, settingsCache, config, blogIcon, labs, urlUtils} = require('../services/proxy');
+const {metaData, escapeExpression, SafeString, logging, settingsCache, config, blogIcon, urlUtils} = require('../services/proxy');
 const _ = require('lodash');
 const debug = require('ghost-ignition').debug('ghost_head');
 const templateStyles = require('./tpl/styles');
 
 const getMetaData = metaData.get;
-const getAssetUrl = metaData.getAssetUrl;
 
 function writeMetaTag(property, content, type) {
     type = type || property.substring(0, 7) === 'twitter' ? 'name' : 'property';
@@ -37,16 +36,14 @@ function finaliseStructuredData(meta) {
     return head;
 }
 
-function getMembersHelper() {
+function getMembersHelper(data) {
     const stripeDirectSecretKey = settingsCache.get('stripe_secret_key');
     const stripeDirectPublishableKey = settingsCache.get('stripe_publishable_key');
     const stripeConnectAccountId = settingsCache.get('stripe_connect_account_id');
-
-    let membersHelper = `<script defer src="${getAssetUrl('public/members.js', true)}"></script>`;
-    if (config.get('enableDeveloperExperiments') || config.get('portal')) {
-        membersHelper = `<script defer src="https://unpkg.com/@tryghost/portal@latest/umd/portal.min.js" data-ghost="${urlUtils.getSiteUrl()}"></script>`;
-        membersHelper += (`<style type='text/css'> ${templateStyles}</style>`);
-    }
+    const colorString = _.has(data, 'site._preview') && data.site.accent_color ? ` data-accent-color="${data.site.accent_color}"` : '';
+    const portalUrl = config.get('portal:url');
+    let membersHelper = `<script defer src="${portalUrl}" data-ghost="${urlUtils.getSiteUrl()}"${colorString}></script>`;
+    membersHelper += (`<style> ${templateStyles}</style>`);
     if ((!!stripeDirectSecretKey && !!stripeDirectPublishableKey) || !!stripeConnectAccountId) {
         membersHelper += '<script async src="https://js.stripe.com/v3/"></script>';
     }
@@ -171,8 +168,8 @@ module.exports = function ghost_head(options) { // eslint-disable-line camelcase
                     }
                 }
 
-                if (!_.includes(context, 'amp') && labs.isSet('members')) {
-                    head.push(getMembersHelper());
+                if (!_.includes(context, 'amp')) {
+                    head.push(getMembersHelper(options.data));
                 }
             }
 

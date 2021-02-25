@@ -13,6 +13,7 @@ module.exports = {
     get blankDocument() {
         return {
             version: '0.3.1',
+            ghostVersion: '4.0',
             markups: [],
             atoms: [],
             cards: [],
@@ -92,7 +93,7 @@ module.exports = {
     populateImageSizes: async function (mobiledocJson) {
         // do not require image-size until it's requested to avoid circular dependencies
         // shared/url-utils > server/lib/mobiledoc > server/lib/image/image-size > server/adapters/storage/utils
-        const imageSize = require('./image/image-size');
+        const {imageSize} = require('./image');
         const urlUtils = require('../../shared/url-utils');
         const storageInstance = storage.getStorage();
 

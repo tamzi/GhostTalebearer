@@ -9,7 +9,7 @@ const {i18n} = require('../../lib/common');
 const settingsCache = require('../settings/cache');
 const urlUtils = require('../../../shared/url-utils');
 
-const helpMessage = i18n.t('errors.api.authentication.checkEmailConfigInstructions', {url: 'https://ghost.org/docs/concepts/config/#mail'});
+const helpMessage = i18n.t('errors.api.authentication.checkEmailConfigInstructions', {url: 'https://ghost.org/docs/config/#mail'});
 const defaultErrorMessage = i18n.t('errors.mail.failedSendingEmail.error');
 
 function getDomain() {
@@ -105,7 +105,7 @@ module.exports = class GhostMailer {
     handleDirectTransportResponse(response) {
         return new Promise((resolve, reject) => {
             response.statusHandler.once('failed', function (data) {
-                if (data.error && data.error.errno === 'ENOTFOUND') {
+                if (data.error && data.error.code === 'ENOTFOUND') {
                     reject(createMailError({
                         message: i18n.t('errors.mail.noMailServerAtAddress.error', {domain: data.domain})
                     }));

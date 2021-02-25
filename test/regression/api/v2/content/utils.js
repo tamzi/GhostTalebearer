@@ -13,6 +13,7 @@ const expectedProperties = {
 
     post: _(schema.posts)
         .keys()
+        .filter(key => key.indexOf('@@') === -1)
         // by default we only return html
         .without('mobiledoc', 'plaintext')
         // v2 doesn't return author_id OR author
@@ -22,7 +23,7 @@ const expectedProperties = {
         // v2 API doesn't return unused fields
         .without('locale', 'visibility')
         // emails are not supported in API v2
-        .without('send_email_when_published')
+        .without('email_recipient_filter')
         // These fields aren't useful as they always have known values
         .without('status')
         .concat('page')

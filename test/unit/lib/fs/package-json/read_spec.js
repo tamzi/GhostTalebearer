@@ -2,7 +2,13 @@ const should = require('should');
 const tmp = require('tmp');
 const join = require('path').join;
 const fs = require('fs-extra');
-const packageJSON = require('../../../../../core/server/lib/fs/package-json');
+const PackageJSON = require('../../../../../core/server/lib/fs/package-json/package-json');
+
+const packageJSON = new PackageJSON({
+    i18n: {
+        t: key => key
+    }
+});
 
 describe('lib/fs/package-json: read', function () {
     describe('all', function () {
@@ -11,15 +17,15 @@ describe('lib/fs/package-json: read', function () {
 
             // create example theme
             fs.mkdirSync(join(packagePath.name, 'casper'));
-            fs.writeFileSync(join(packagePath.name, 'casper', 'index.hbs'));
+            fs.writeFileSync(join(packagePath.name, 'casper', 'index.hbs'), '');
 
             // create some trash
             fs.mkdirSync(join(packagePath.name, 'node_modules'));
             fs.mkdirSync(join(packagePath.name, 'bower_components'));
             fs.mkdirSync(join(packagePath.name, '.git'));
-            fs.writeFileSync(join(packagePath.name, '.DS_Store'));
+            fs.writeFileSync(join(packagePath.name, '.DS_Store'), '');
 
-            packageJSON.read.all(packagePath.name)
+            packageJSON.readPackages(packagePath.name)
                 .then(function (pkgs) {
                     pkgs.should.eql({
                         casper: {
@@ -48,9 +54,9 @@ describe('lib/fs/package-json: read', function () {
             // create example theme
             fs.mkdirSync(join(packagePath.name, 'testtheme'));
             fs.writeFileSync(join(packagePath.name, 'testtheme', 'package.json'), pkgJson);
-            fs.writeFileSync(join(packagePath.name, 'testtheme', 'index.hbs'));
+            fs.writeFileSync(join(packagePath.name, 'testtheme', 'index.hbs'), '');
 
-            packageJSON.read.all(packagePath.name)
+            packageJSON.readPackages(packagePath.name)
                 .then(function (pkgs) {
                     pkgs.should.eql({
                         testtheme: {
@@ -81,9 +87,9 @@ describe('lib/fs/package-json: read', function () {
             // create example theme
             fs.mkdirSync(join(packagePath.name, 'testtheme'));
             fs.writeFileSync(join(packagePath.name, 'testtheme', 'package.json'), pkgJson);
-            fs.writeFileSync(join(packagePath.name, 'testtheme', 'index.hbs'));
+            fs.writeFileSync(join(packagePath.name, 'testtheme', 'index.hbs'), '');
 
-            packageJSON.read.all(packagePath.name)
+            packageJSON.readPackages(packagePath.name)
                 .then(function (pkgs) {
                     pkgs.should.eql({
                         testtheme: {
@@ -106,15 +112,15 @@ describe('lib/fs/package-json: read', function () {
 
             // create example theme
             fs.mkdirSync(join(packagePath.name, 'casper'));
-            fs.writeFileSync(join(packagePath.name, 'casper', 'index.hbs'));
+            fs.writeFileSync(join(packagePath.name, 'casper', 'index.hbs'), '');
 
             // create some trash
             fs.mkdirSync(join(packagePath.name, 'node_modules'));
             fs.mkdirSync(join(packagePath.name, 'bower_components'));
             fs.mkdirSync(join(packagePath.name, '.git'));
-            fs.writeFileSync(join(packagePath.name, '.DS_Store'));
+            fs.writeFileSync(join(packagePath.name, '.DS_Store'), '');
 
-            packageJSON.read.one(packagePath.name, 'casper')
+            packageJSON.readPackage(packagePath.name, 'casper')
                 .then(function (pkgs) {
                     pkgs.should.eql({
                         casper: {
@@ -143,9 +149,9 @@ describe('lib/fs/package-json: read', function () {
             // create example theme
             fs.mkdirSync(join(packagePath.name, 'testtheme'));
             fs.writeFileSync(join(packagePath.name, 'testtheme', 'package.json'), pkgJson);
-            fs.writeFileSync(join(packagePath.name, 'testtheme', 'index.hbs'));
+            fs.writeFileSync(join(packagePath.name, 'testtheme', 'index.hbs'), '');
 
-            packageJSON.read.one(packagePath.name, 'testtheme')
+            packageJSON.readPackage(packagePath.name, 'testtheme')
                 .then(function (pkgs) {
                     pkgs.should.eql({
                         testtheme: {
@@ -176,9 +182,9 @@ describe('lib/fs/package-json: read', function () {
             // create example theme
             fs.mkdirSync(join(packagePath.name, 'testtheme'));
             fs.writeFileSync(join(packagePath.name, 'testtheme', 'package.json'), pkgJson);
-            fs.writeFileSync(join(packagePath.name, 'testtheme', 'index.hbs'));
+            fs.writeFileSync(join(packagePath.name, 'testtheme', 'index.hbs'), '');
 
-            packageJSON.read.one(packagePath.name, 'testtheme')
+            packageJSON.readPackage(packagePath.name, 'testtheme')
                 .then(function (pkgs) {
                     pkgs.should.eql({
                         testtheme: {
@@ -198,18 +204,18 @@ describe('lib/fs/package-json: read', function () {
             const packagePath = tmp.dirSync({unsafeCleanup: true});
 
             // create trash
-            fs.writeFileSync(join(packagePath.name, 'casper.zip'));
-            fs.writeFileSync(join(packagePath.name, '.DS_Store'));
+            fs.writeFileSync(join(packagePath.name, 'casper.zip'), '');
+            fs.writeFileSync(join(packagePath.name, '.DS_Store'), '');
 
             // create actual theme
             fs.mkdirSync(join(packagePath.name, 'casper'));
             fs.mkdirSync(join(packagePath.name, 'casper', 'partials'));
-            fs.writeFileSync(join(packagePath.name, 'casper', 'index.hbs'));
-            fs.writeFileSync(join(packagePath.name, 'casper', 'partials', 'navigation.hbs'));
+            fs.writeFileSync(join(packagePath.name, 'casper', 'index.hbs'), '');
+            fs.writeFileSync(join(packagePath.name, 'casper', 'partials', 'navigation.hbs'), '');
             fs.mkdirSync(join(packagePath.name, 'not-casper'));
-            fs.writeFileSync(join(packagePath.name, 'not-casper', 'index.hbs'));
+            fs.writeFileSync(join(packagePath.name, 'not-casper', 'index.hbs'), '');
 
-            packageJSON.read.one(packagePath.name, 'casper')
+            packageJSON.readPackage(packagePath.name, 'casper')
                 .then(function (pkgs) {
                     pkgs.should.eql({
                         casper: {
@@ -229,10 +235,10 @@ describe('lib/fs/package-json: read', function () {
             const packagePath = tmp.dirSync({unsafeCleanup: true});
 
             // create trash
-            fs.writeFileSync(join(packagePath.name, 'casper.zip'));
-            fs.writeFileSync(join(packagePath.name, '.DS_Store'));
+            fs.writeFileSync(join(packagePath.name, 'casper.zip'), '');
+            fs.writeFileSync(join(packagePath.name, '.DS_Store'), '');
 
-            packageJSON.read.one(packagePath.name, 'casper')
+            packageJSON.readPackage(packagePath.name, 'casper')
                 .then(function () {
                     done('Should have thrown an error');
                 })
@@ -247,10 +253,10 @@ describe('lib/fs/package-json: read', function () {
             const packagePath = tmp.dirSync({unsafeCleanup: true});
 
             // create trash
-            fs.writeFileSync(join(packagePath.name, 'casper.zip'));
-            fs.writeFileSync(join(packagePath.name, '.DS_Store'));
+            fs.writeFileSync(join(packagePath.name, 'casper.zip'), '');
+            fs.writeFileSync(join(packagePath.name, '.DS_Store'), '');
 
-            packageJSON.read.one(packagePath.name, 'casper.zip')
+            packageJSON.readPackage(packagePath.name, 'casper.zip')
                 .then(function (pkg) {
                     pkg.should.eql({});
 

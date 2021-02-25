@@ -35,6 +35,8 @@ const mapPost = (model, frame) => {
 
     url.forPost(model.id, jsonModel, frame);
 
+    extraAttrs.forPost(frame, model, jsonModel);
+
     if (utils.isContentAPI(frame)) {
         // Content api v2 still expects page prop
         if (!frame.options.columns || frame.options.columns.includes('page')) {
@@ -48,7 +50,6 @@ const mapPost = (model, frame) => {
         gating.forPost(jsonModel, frame);
     }
 
-    extraAttrs.forPost(frame, model, jsonModel);
     clean.post(jsonModel, frame);
 
     if (frame.options && frame.options.withRelated) {
@@ -76,6 +77,7 @@ const mapPost = (model, frame) => {
 
     delete jsonModel.posts_meta;
     delete jsonModel.send_email_when_published;
+    delete jsonModel.email_recipient_filter;
     delete jsonModel.email_subject;
 
     return jsonModel;
@@ -86,8 +88,9 @@ const mapSettings = (attrs, frame) => {
     extraAttrs.forSettings(attrs, frame);
 
     if (_.isArray(attrs)) {
+        const DEPRECATED_KEYS = ['lang', 'timezone', 'accent_color', 'slack_url', 'slack_username'];
         attrs = _.filter(attrs, (o) => {
-            return o.key !== 'lang' && o.key !== 'timezone' && o.key !== 'accent_color';
+            return !DEPRECATED_KEYS.includes(o.key);
         });
     } else {
         delete attrs.lang;

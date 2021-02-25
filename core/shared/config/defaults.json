@@ -33,7 +33,7 @@
         "paymentProcessors": [],
         "emailTemplate": {
             "showSiteHeader": true,
-            "showPoweredBy": false
+            "showPoweredBy": true
         }
     },
     "logging": {
@@ -116,5 +116,12 @@
     "sendWelcomeEmail": true,
     "stripeDirect": false,
     "enableStripePromoCodes": false,
-    "portal": false
+    "emailAnalytics": true,
+    "backgroundJobs": {
+        "emailAnalytics": true
+    },
+    "portal": {
+        "url": "https://unpkg.com/@tryghost/portal@~1.0.0-rc/umd/portal.min.js",
+        "version": "~1.0.0-rc"
+    }
 }

@@ -1,6 +1,6 @@
 const yaml = require('js-yaml');
 const debug = require('ghost-ignition').debug('frontend:services:settings:yaml-parser');
-const {i18n} = require('../../../server/lib/common');
+const {i18n} = require('../proxy');
 const errors = require('@tryghost/errors');
 
 /**
@@ -11,7 +11,7 @@ const errors = require('@tryghost/errors');
  */
 module.exports = function parseYaml(file, fileName) {
     try {
-        const parsed = yaml.safeLoad(file);
+        const parsed = yaml.load(file);
 
         debug('YAML settings file parsed:', fileName);
 

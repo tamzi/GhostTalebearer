@@ -1,5 +1,6 @@
 const {URL} = require('url');
 const crypto = require('crypto');
+const createKeypair = require('keypair');
 const path = require('path');
 
 const COMPLIMENTARY_PLAN = {
@@ -59,20 +60,10 @@ class MembersConfigProvider {
     }
 
     getPublicPlans() {
-        const CURRENCY_SYMBOLS = {
-            USD: '$',
-            AUD: '$',
-            CAD: '$',
-            GBP: '£',
-            EUR: '€',
-            INR: '₹'
-        };
-
         const defaultPriceData = {
             monthly: 0,
             yearly: 0,
-            currency: 'USD',
-            currency_symbol: CURRENCY_SYMBOLS.USD
+            currency: 'USD'
         };
 
         try {
@@ -87,7 +78,6 @@ class MembersConfigProvider {
             }, {});
 
             priceData.currency = plans[0].currency || 'USD';
-            priceData.currency_symbol = CURRENCY_SYMBOLS[priceData.currency.toUpperCase()];
 
             if (Number.isInteger(priceData.monthly) && Number.isInteger(priceData.yearly)) {
                 return priceData;
@@ -230,10 +220,20 @@ class MembersConfigProvider {
             this._urlUtils.urlFor('admin', true)
         );
 
+        let privateKey = this._settingsCache.get('members_private_key');
+        let publicKey = this._settingsCache.get('members_public_key');
+
+        if (!privateKey || !publicKey) {
+            this._logging.warn('Could not find members_private_key, using dynamically generated keypair');
+            const keypair = createKeypair({bits: 1024});
+            privateKey = keypair.private;
+            publicKey = keypair.public;
+        }
+
         return {
             issuer: membersApiUrl,
-            publicKey: this._settingsCache.get('members_public_key'),
-            privateKey: this._settingsCache.get('members_private_key')
+            publicKey,
+            privateKey
         };
     }
 
