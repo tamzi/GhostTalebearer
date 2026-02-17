@@ -1,0 +1,104 @@
+const assert = require('node:assert/strict');
+const should = require('should');
+const sinon = require('sinon');
+
+const configUtils = require('../../utils/config-utils');
+const events = require('../../../core/server/lib/common/events');
+const bootstrapSocket = require('../../../core/server/lib/bootstrap-socket');
+
+describe('Notify', function () {
+    describe('notifyServerStarted', function () {
+        let notify;
+        let socketStub;
+        let eventSpy;
+
+        beforeEach(function () {
+            // Have to re-require each time to clear the internal flag
+            delete require.cache[require.resolve('../../../core/server/notify')];
+            notify = require('../../../core/server/notify');
+
+            // process.send isn't set for tests, we can safely override;
+            process.send = sinon.stub();
+
+            // stub socket connectAndSend method
+            socketStub = sinon.stub(bootstrapSocket, 'connectAndSend');
+
+            // Spy for the events that get called
+            eventSpy = sinon.spy(events, 'emit');
+        });
+
+        afterEach(async function () {
+            process.send = undefined;
+            await configUtils.restore();
+            socketStub.restore();
+            eventSpy.restore();
+        });
+
+        it('it resolves a promise', async function () {
+            await notify.notifyServerStarted();
+        });
+
+        it('it communicates with IPC correctly on success', function () {
+            notify.notifyServerStarted();
+
+            assert.equal(process.send.calledOnce, true);
+
+            let message = process.send.firstCall.args[0];
+            message.should.be.an.Object().with.properties('started', 'debug');
+            assert(!('error' in message));
+            assert.equal(message.started, true);
+        });
+
+        it('communicates with IPC correctly on failure', function () {
+            notify.notifyServerStarted(new Error('something went wrong'));
+
+            assert.equal(process.send.calledOnce, true);
+
+            let message = process.send.firstCall.args[0];
+            message.should.be.an.Object().with.properties('started', 'debug', 'error');
+            assert.equal(message.started, false);
+            message.error.should.be.an.Object().with.properties('message');
+            assert.equal(message.error.message, 'something went wrong');
+        });
+
+        it('communicates via bootstrap socket correctly on success', function () {
+            configUtils.set('bootstrap-socket', 'testing');
+
+            notify.notifyServerStarted();
+
+            assert.equal(socketStub.calledOnce, true);
+            assert.equal(socketStub.firstCall.args[0], 'testing');
+
+            let message = socketStub.firstCall.args[1];
+            message.should.be.an.Object().with.properties('started', 'debug');
+            assert(!('error' in message));
+            assert.equal(message.started, true);
+        });
+
+        it('communicates via bootstrap socket correctly on failure', function () {
+            configUtils.set('bootstrap-socket', 'testing');
+
+            notify.notifyServerStarted(new Error('something went wrong'));
+
+            assert.equal(socketStub.calledOnce, true);
+            assert.equal(socketStub.firstCall.args[0], 'testing');
+
+            let message = socketStub.firstCall.args[1];
+            message.should.be.an.Object().with.properties('started', 'debug', 'error');
+            assert.equal(message.started, false);
+            message.error.should.be.an.Object().with.properties('message');
+            assert.equal(message.error.message, 'something went wrong');
+        });
+
+        it('can be called multiple times, but only communicates once', function () {
+            configUtils.set('bootstrap-socket', 'testing');
+
+            notify.notifyServerStarted();
+            notify.notifyServerStarted(new Error('something went wrong'));
+            notify.notifyServerStarted();
+
+            assert.equal(process.send.calledOnce, true);
+            assert.equal(socketStub.calledOnce, true);
+        });
+    });
+});
