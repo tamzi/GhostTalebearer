@@ -1,6 +1,5 @@
 const assert = require('node:assert/strict');
 const {assertExists} = require('../../utils/assertions');
-const should = require('should');
 const nock = require('nock');
 const path = require('path');
 const supertest = require('supertest');
@@ -301,8 +300,8 @@ describe('Posts API', function () {
         assert.equal(modelJson.title, post.title);
         assert.equal(modelJson.status, post.status);
         assert.equal(modelJson.published_at.toISOString(), '2016-05-30T07:00:00.000Z');
-        modelJson.created_at.toISOString().should.not.eql(post.created_at.toISOString());
-        modelJson.updated_at.toISOString().should.not.eql(post.updated_at.toISOString());
+        assert.notEqual(modelJson.created_at.toISOString(), post.created_at.toISOString());
+        assert.notEqual(modelJson.updated_at.toISOString(), post.updated_at.toISOString());
 
         assert.equal(modelJson.posts_meta.feature_image_alt, post.feature_image_alt);
         assert.equal(modelJson.posts_meta.feature_image_caption, post.feature_image_caption);

@@ -1,16 +1,7 @@
-import {
-    Button,
-    Dialog,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    LoadingIndicator,
-    LucideIcon,
-    formatTimestamp
-} from '@tryghost/shade';
+import {Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, LoadingIndicator} from '@tryghost/shade/components';
 import {Comment, useBrowseCommentLikes} from '@tryghost/admin-x-framework/api/comments';
 import {CommentAvatar} from './comment-avatar';
+import {LucideIcon, formatTimestamp} from '@tryghost/shade/utils';
 
 interface CommentLikesModalProps {
     comment: Comment;
@@ -80,7 +71,7 @@ function CommentLikesModal({comment, open, onOpenChange}: CommentLikesModalProps
                                                 memberId={like.member?.id}
                                             />
                                             {/* Heart overlay */}
-                                            <div className="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-pink-500 text-white">
+                                            <div className="absolute -right-0.5 -bottom-0.5 flex size-4 items-center justify-center rounded-full bg-pink-500 text-white">
                                                 <LucideIcon.Heart className="size-2.5" fill="currentColor" />
                                             </div>
                                         </div>

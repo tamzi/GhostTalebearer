@@ -1,5 +1,4 @@
 const assert = require('node:assert/strict');
-const should = require('should');
 const sinon = require('sinon');
 const jsdom = require('jsdom');
 const lexicalLib = require('../../../../core/server/lib/lexical');
@@ -10,6 +9,8 @@ describe('lib/lexical', function () {
     });
 
     describe('render()', function () {
+        this.timeout(5000);
+
         it('renders', async function () {
             const lexical = `{"root":{"children":[{"children":[{"detail":0,"format":0,"mode":"normal","style":"","text":"Lexical is ","type":"text","version":1},{"detail":0,"format":3,"mode":"normal","style":"","text":"rendering.","type":"text","version":1}],"direction":"ltr","format":"","indent":0,"type":"paragraph","version":1}],"direction":"ltr","format":"","indent":0,"type":"root","version":1}}`;
 

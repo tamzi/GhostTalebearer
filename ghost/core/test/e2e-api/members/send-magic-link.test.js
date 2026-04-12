@@ -1,6 +1,7 @@
 const {agentProvider, mockManager, fixtureManager, matchers, configUtils, resetRateLimits, dbUtils} = require('../../utils/e2e-framework');
 const sinon = require('sinon');
 const assert = require('node:assert/strict');
+const cheerio = require('cheerio');
 const {assertMatchSnapshot} = require('../../utils/assertions');
 const settingsCache = require('../../../core/shared/settings-cache');
 const settingsService = require('../../../core/server/services/settings');
@@ -43,25 +44,19 @@ describe('sendMagicLink', function () {
             .expectStatus(400);
     });
 
-    it('Throws an error when logging in to a email that does not exist', async function () {
+    it('Returns 201 when logging in with a email that does not exist', async function () {
         const email = 'this-member-does-not-exist@test.com';
         await membersAgent.post('/api/send-magic-link')
             .body({
                 email,
                 emailType: 'signin'
             })
-            .expectStatus(400)
-            .matchBodySnapshot({
-                errors: [{
-                    id: anyErrorId,
-                    // Add this here because it is easy to be overlooked (we need a human readable error!)
-                    // 'Please sign up first' should be included only when invite only is disabled.
-                    message: 'No member exists with this e-mail address. Please sign up first.'
-                }]
-            });
+            .expectStatus(201);
+
+        mockManager.assert.sentEmailCount(0);
     });
 
-    it('Throws an error when logging in to a email that does not exist (invite only)', async function () {
+    it('Returns 201 when logging in with a email that does not exist (invite only)', async function () {
         settingsCache.set('members_signup_access', {value: 'invite'});
 
         const email = 'this-member-does-not-exist@test.com';
@@ -70,15 +65,9 @@ describe('sendMagicLink', function () {
                 email,
                 emailType: 'signin'
             })
-            .expectStatus(400)
-            .matchBodySnapshot({
-                errors: [{
-                    id: anyErrorId,
-                    // Add this here because it is easy to be overlooked (we need a human readable error!)
-                    // 'Please sign up first' should NOT be included
-                    message: 'No member exists with this e-mail address.'
-                }]
-            });
+            .expectStatus(201);
+
+        mockManager.assert.sentEmailCount(0);
     });
 
     it('Throws an error when trying to sign up on an invite-only site', async function () {
@@ -498,13 +487,7 @@ describe('sendMagicLink', function () {
                     email: unicodeEmail,
                     emailType: 'signin'
                 })
-                .expectStatus(400)
-                .matchBodySnapshot({
-                    errors: [{
-                        id: anyErrorId,
-                        message: 'No member exists with this e-mail address. Please sign up first.'
-                    }]
-                });
+                .expectStatus(201);
         });
 
         it('should normalize unicode domains for signup', async function () {
@@ -788,11 +771,13 @@ describe('sendMagicLink', function () {
             const subjectMatch = mail.subject.match(otcRegex);
             assert(!subjectMatch, `Email subject should not contain OTC. Found: "${subjectMatch?.[0]}" in subject: "${mail.subject}"`);
 
-            const htmlMatch = mail.html.match(otcRegex);
-            assert(!htmlMatch, `Email HTML should not contain OTC. Found: "${htmlMatch?.[0]}" near: "${mail.html.substring(mail.html.search(otcRegex) - 50, mail.html.search(otcRegex) + 100)}"`);
-
             const textMatch = mail.text.match(otcRegex);
             assert(!textMatch, `Email text should not contain OTC. Found: "${textMatch?.[0]}" near: "${mail.text.substring(mail.text.search(otcRegex) - 50, mail.text.search(otcRegex) + 100)}"`);
+
+            // It's possible that there's an OTC-like in an href, so only check the rendered text.
+            const htmlText = cheerio.load(mail.html).text();
+            const htmlMatch = htmlText.match(otcRegex);
+            assert(!htmlMatch, `Email HTML should not contain OTC. Found: "${htmlMatch?.[0]}" near: "${htmlText.substring(htmlText.search(otcRegex) - 50, htmlText.search(otcRegex) + 100)}"`);
         }
 
         beforeEach(async function () {
@@ -910,10 +895,13 @@ describe('sendMagicLink', function () {
 
         it('Should handle OTC parameter with non-existent member email', async function () {
             const response = await sendMagicLinkRequest('nonexistent@test.com', 'signin', true)
-                .expectStatus(400);
+                .expectStatus(201);
 
-            // Should still process the request normally for non-existent members
-            assert(!response.body.otc_ref, 'Should not return otc_ref for non-existent member');
+            // Should return otc_ref even for non-existent members so the
+            // response is indistinguishable from an existing member signin
+            assert.equal(typeof response.body.otc_ref, 'string', 'Response should contain otc_ref');
+            assert.match(response.body.otc_ref, /^[a-f0-9-]{36}$/, 'otc_ref should be a valid UUID');
+            mockManager.assert.sentEmailCount(0);
         });
 
         async function sendAndVerifyOTC(email, emailType = 'signin', options = {}) {

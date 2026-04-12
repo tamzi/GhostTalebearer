@@ -1,4 +1,3 @@
-require('should');
 const EmailRenderer = require('../../../../../core/server/services/email-service/email-renderer');
 const assert = require('node:assert/strict');
 const {assertExists} = require('../../../../utils/assertions');
@@ -413,7 +412,7 @@ describe('Email renderer', function () {
             });
 
             // Verify crypto.randomUUID was never called since uniqueid wasn't used
-            assert.equal(randomUUIDSpy.callCount, 0);
+            sinon.assert.notCalled(randomUUIDSpy);
 
             randomUUIDSpy.restore();
         });
@@ -1266,6 +1265,7 @@ describe('Email renderer', function () {
                 name: 'Test Newsletter',
                 show_badge: false,
                 feedback_enabled: true,
+                show_share_button: true,
                 show_post_title_section: true
             };
             postUrl = 'http://example.com';
@@ -1360,6 +1360,7 @@ describe('Email renderer', function () {
                 name: 'Test Newsletter',
                 show_badge: false,
                 feedback_enabled: true,
+                show_share_button: true,
                 show_post_title_section: true
             });
             const segment = null;
@@ -1380,6 +1381,7 @@ describe('Email renderer', function () {
                 name: 'Test Newsletter',
                 show_badge: false,
                 feedback_enabled: true,
+                show_share_button: true,
                 show_post_title_section: true
             });
             const segment = null;
@@ -1399,20 +1401,11 @@ describe('Email renderer', function () {
             // Unsubscribe button included
             assert(response.plaintext.includes('Unsubscribe [%%{unsubscribe_url}%%]'));
             assert(response.html.includes('Unsubscribe'));
-            assert.equal(response.replacements.length, 4);
-            response.replacements.should.match([
-                {
-                    id: 'uuid'
-                },
-                {
-                    id: 'key'
-                },
-                {
-                    id: 'unsubscribe_url'
-                },
-                {
-                    id: 'list_unsubscribe'
-                }
+            assert.deepEqual(response.replacements.map(r => r.id), [
+                'uuid',
+                'key',
+                'unsubscribe_url',
+                'list_unsubscribe'
             ]);
 
             assert(response.plaintext.includes('http://example.com'));
@@ -1426,6 +1419,79 @@ describe('Email renderer', function () {
             // Test feedback buttons included
             assert(response.html.includes('http://feedback-link.com/?score=1'));
             assert(response.html.includes('http://feedback-link.com/?score=0'));
+        });
+
+        it('includes share links for public posts', async function () {
+            const post = createModel(basePost);
+            const newsletter = createModel({
+                header_image: null,
+                name: 'Test Newsletter',
+                show_badge: false,
+                feedback_enabled: true,
+                show_share_button: true,
+                show_post_title_section: true
+            });
+            const segment = null;
+            const options = {};
+
+            const response = await emailRenderer.renderBody(
+                post,
+                newsletter,
+                segment,
+                options
+            );
+
+            assert(response.html.includes('href="http://example.com/#/share"'));
+            assert(response.html.includes('>Share</p>'));
+        });
+
+        it('does not include share links for non-public posts', async function () {
+            const post = createModel({
+                ...basePost,
+                visibility: 'members'
+            });
+            const newsletter = createModel({
+                header_image: null,
+                name: 'Test Newsletter',
+                show_badge: false,
+                feedback_enabled: true,
+                show_share_button: true,
+                show_post_title_section: true
+            });
+            const segment = null;
+            const options = {};
+
+            const response = await emailRenderer.renderBody(
+                post,
+                newsletter,
+                segment,
+                options
+            );
+
+            assert(!response.html.includes('#/share'));
+        });
+
+        it('does not include share links when disabled in newsletter settings', async function () {
+            const post = createModel(basePost);
+            const newsletter = createModel({
+                header_image: null,
+                name: 'Test Newsletter',
+                show_badge: false,
+                feedback_enabled: true,
+                show_share_button: false,
+                show_post_title_section: true
+            });
+            const segment = null;
+            const options = {};
+
+            const response = await emailRenderer.renderBody(
+                post,
+                newsletter,
+                segment,
+                options
+            );
+
+            assert(!response.html.includes('#/share'));
         });
 
         it('uses custom excerpt as preheader', async function () {
@@ -1709,6 +1775,7 @@ describe('Email renderer', function () {
                 name: 'Test Newsletter',
                 show_badge: true,
                 feedback_enabled: true,
+                show_share_button: true,
                 show_post_title_section: true
             });
             const segment = null;
@@ -1758,6 +1825,7 @@ describe('Email renderer', function () {
                 '#',
                 `http://feedback-link.com/?score=1&uuid=%%{uuid}%%&key=%%{key}%%`,
                 `http://feedback-link.com/?score=0&uuid=%%{uuid}%%&key=%%{key}%%`,
+                `http://tracked-link.com/?m=%%{uuid}%%&url=http%3A%2F%2Fexample.com%2F%3Fsource_tracking%3DTest%2BNewsletter%26post_tracking%3Dadded%23%2Fshare`,
                 `%%{unsubscribe_url}%%`,
                 `https://ghost.org/?via=pbg-newsletter&source_tracking=site`
             ]);
@@ -1780,6 +1848,7 @@ describe('Email renderer', function () {
                 name: 'Test Newsletter',
                 show_badge: true,
                 feedback_enabled: true,
+                show_share_button: true,
                 show_post_title_section: true
             });
             const segment = null;
@@ -1813,6 +1882,7 @@ describe('Email renderer', function () {
                 '#',
                 'http://feedback-link.com/?score=1&uuid=%%{uuid}%%&key=%%{key}%%',
                 'http://feedback-link.com/?score=0&uuid=%%{uuid}%%&key=%%{key}%%',
+                'http://example.com/#/share',
                 '%%{unsubscribe_url}%%',
                 'https://ghost.org/?via=pbg-newsletter'
             ]);
@@ -1825,6 +1895,7 @@ describe('Email renderer', function () {
                 name: 'Test Newsletter',
                 show_badge: true,
                 feedback_enabled: true,
+                show_share_button: true,
                 show_post_title_section: true
             });
             const segment = null;
@@ -1868,6 +1939,7 @@ describe('Email renderer', function () {
                 `http://tracked-link.com/?m=%%{uuid}%%&url=https%3A%2F%2Fexample.com%2F%3Fref%3D123%26source_tracking%3DTest%2BNewsletter%26post_tracking%3Dadded`,
                 `http://feedback-link.com/?score=1&uuid=%%{uuid}%%&key=%%{key}%%`,
                 `http://feedback-link.com/?score=0&uuid=%%{uuid}%%&key=%%{key}%%`,
+                `http://tracked-link.com/?m=%%{uuid}%%&url=http%3A%2F%2Fexample.com%2F%3Fsource_tracking%3DTest%2BNewsletter%26post_tracking%3Dadded%23%2Fshare`,
                 `%%{unsubscribe_url}%%`,
                 `https://ghost.org/?via=pbg-newsletter&source_tracking=site`
             ]);
@@ -1907,7 +1979,7 @@ describe('Email renderer', function () {
             );
 
             // Verify tracking was called for the Transistor link
-            assert.equal(addTrackingToUrlStub.called, true);
+            sinon.assert.called(addTrackingToUrlStub);
             const transistorCall = addTrackingToUrlStub.getCalls().find(
                 call => call.args[0].href.includes('transistor.fm')
             );
@@ -2007,20 +2079,11 @@ describe('Email renderer', function () {
 
             assert(response.html.includes('Unsubscribe'));
             assert(response.html.includes('http://example.com'));
-            assert.equal(response.replacements.length, 4);
-            response.replacements.should.match([
-                {
-                    id: 'uuid'
-                },
-                {
-                    id: 'key'
-                },
-                {
-                    id: 'unsubscribe_url'
-                },
-                {
-                    id: 'list_unsubscribe'
-                }
+            assert.deepEqual(response.replacements.map(r => r.id), [
+                'uuid',
+                'key',
+                'unsubscribe_url',
+                'list_unsubscribe'
             ]);
             assert(!response.html.includes('members only section'));
             assert(response.html.includes('some text for both'));
@@ -2194,9 +2257,7 @@ describe('Email renderer', function () {
             });
         });
 
-        const testLexicalRenderDesignOptions = async function ({expectedObject, labs}) {
-            labsEnabled = labs || false;
-
+        const testLexicalRenderDesignOptions = async function ({expectedObject}) {
             const post = createModel(basePost);
             const newsletter = createModel({
                 ...baseNewsletter,
@@ -2504,6 +2565,70 @@ describe('Email renderer', function () {
             const newsletter = createModel({});
             const data = await emailRenderer.getTemplateData({post, newsletter, html, addPaywall: false});
             assert.equal(data.post.publishedAt, '1 Jan 1970');
+        });
+
+        it('includes share URL for public posts', async function () {
+            const html = '';
+            const post = createModel({
+                posts_meta: createModel({}),
+                loaded: ['posts_meta'],
+                visibility: 'public'
+            });
+            const newsletter = createModel({
+                show_share_button: true
+            });
+            const data = await emailRenderer.getTemplateData({post, newsletter, html, addPaywall: false});
+            assert.equal(data.post.shareUrl, 'http://example.com/#/share');
+        });
+
+        it('calculates footer feedback button widths based on visible actions', async function () {
+            settings.comments_enabled = 'all';
+            const html = '';
+            const post = createModel({
+                posts_meta: createModel({}),
+                loaded: ['posts_meta'],
+                visibility: 'public'
+            });
+            const newsletter = createModel({
+                feedback_enabled: true,
+                show_comment_cta: true,
+                show_share_button: true
+            });
+
+            const data = await emailRenderer.getTemplateData({post, newsletter, html, addPaywall: false});
+            assert.equal(data.feedbackButtonCellWidth, '25%');
+        });
+
+        it('does not include share URL when the newsletter share button is disabled', async function () {
+            const html = '';
+            const post = createModel({
+                posts_meta: createModel({}),
+                loaded: ['posts_meta'],
+                visibility: 'public'
+            });
+            const newsletter = createModel({
+                show_share_button: false
+            });
+
+            const data = await emailRenderer.getTemplateData({post, newsletter, html, addPaywall: false});
+            assert.equal(data.post.shareUrl, null);
+        });
+
+        it('does not include share URL for non-public posts', async function () {
+            const html = '';
+            const newsletter = createModel({
+                show_share_button: true
+            });
+
+            for (const visibility of ['members', 'paid', 'tiers']) {
+                const post = createModel({
+                    posts_meta: createModel({}),
+                    loaded: ['posts_meta'],
+                    visibility
+                });
+                const data = await emailRenderer.getTemplateData({post, newsletter, html, addPaywall: false});
+                assert.equal(data.post.shareUrl, null, `Expected no share URL for "${visibility}" visibility`);
+            }
         });
 
         it('show feature image if post has feature image', async function () {
@@ -2989,6 +3114,7 @@ describe('Email renderer', function () {
 
     describe('limitImageWidth', function () {
         it('Limits width of local images', async function () {
+            const isLocal = url => url === 'http://your-blog.com/content/images/2017/01/02/example.png';
             const emailRenderer = new EmailRenderer({
                 imageSize: {
                     getCachedImageSizeFromUrl() {
@@ -2999,9 +3125,8 @@ describe('Email renderer', function () {
                     }
                 },
                 storageUtils: {
-                    isLocalImage(url) {
-                        return url === 'http://your-blog.com/content/images/2017/01/02/example.png';
-                    }
+                    isLocalImage: isLocal,
+                    isInternalImage: isLocal
                 }
             });
             const response = await emailRenderer.limitImageWidth('http://your-blog.com/content/images/2017/01/02/example.png');
@@ -3011,6 +3136,7 @@ describe('Email renderer', function () {
         });
 
         it('Limits width and height of local images', async function () {
+            const isLocal = url => url === 'http://your-blog.com/content/images/2017/01/02/example.png';
             const emailRenderer = new EmailRenderer({
                 imageSize: {
                     getCachedImageSizeFromUrl() {
@@ -3021,9 +3147,8 @@ describe('Email renderer', function () {
                     }
                 },
                 storageUtils: {
-                    isLocalImage(url) {
-                        return url === 'http://your-blog.com/content/images/2017/01/02/example.png';
-                    }
+                    isLocalImage: isLocal,
+                    isInternalImage: isLocal
                 }
             });
             const response = await emailRenderer.limitImageWidth('http://your-blog.com/content/images/2017/01/02/example.png', 600, 600);
@@ -3032,7 +3157,85 @@ describe('Email renderer', function () {
             assert.equal(response.href, 'http://your-blog.com/content/images/size/w1200h1200/2017/01/02/example.png');
         });
 
+        it('Limits width of CDN content images', async function () {
+            const emailRenderer = new EmailRenderer({
+                imageSize: {
+                    getCachedImageSizeFromUrl() {
+                        return {
+                            width: 2000,
+                            height: 1000
+                        };
+                    }
+                },
+                storageUtils: {
+                    isLocalImage() {
+                        return false;
+                    },
+                    isInternalImage(url) {
+                        return url.startsWith('https://storage.ghost.is/c/6f/a3/test/content/images/');
+                    }
+                }
+            });
+            const response = await emailRenderer.limitImageWidth('https://storage.ghost.is/c/6f/a3/test/content/images/2026/02/example.png');
+            assert.equal(response.width, 600);
+            assert.equal(response.height, 300);
+            assert.equal(response.href, 'https://storage.ghost.is/c/6f/a3/test/content/images/size/w1200/2026/02/example.png');
+        });
+
+        it('Does not rewrite external content/images URLs', async function () {
+            const emailRenderer = new EmailRenderer({
+                imageSize: {
+                    getCachedImageSizeFromUrl() {
+                        return {
+                            width: 2000,
+                            height: 1000
+                        };
+                    }
+                },
+                storageUtils: {
+                    isLocalImage() {
+                        return false;
+                    },
+                    isInternalImage() {
+                        return false;
+                    }
+                }
+            });
+
+            const response = await emailRenderer.limitImageWidth('https://example.com/content/images/example.png');
+            assert.equal(response.width, 600);
+            assert.equal(response.height, 300);
+            assert.equal(response.href, 'https://example.com/content/images/example.png');
+        });
+
+        it('Does not double-rewrite already-sized CDN image URLs', async function () {
+            const emailRenderer = new EmailRenderer({
+                imageSize: {
+                    getCachedImageSizeFromUrl() {
+                        return {
+                            width: 2000,
+                            height: 1000
+                        };
+                    }
+                },
+                storageUtils: {
+                    isLocalImage() {
+                        return false;
+                    },
+                    isInternalImage(url) {
+                        return url.startsWith('https://storage.ghost.is/c/6f/a3/test/content/images/');
+                    }
+                }
+            });
+
+            const response = await emailRenderer.limitImageWidth('https://storage.ghost.is/c/6f/a3/test/content/images/size/w600/2026/02/example.png');
+            assert.equal(response.width, 600);
+            assert.equal(response.height, 300);
+            assert.equal(response.href, 'https://storage.ghost.is/c/6f/a3/test/content/images/size/w600/2026/02/example.png');
+        });
+
         it('Returns default dimensions when getCachedImageSizeFromUrl returns null', async function () {
+            const isLocal = url => url === 'http://your-blog.com/content/images/2017/01/02/example.png';
             const emailRenderer = new EmailRenderer({
                 imageSize: {
                     getCachedImageSizeFromUrl() {
@@ -3040,9 +3243,8 @@ describe('Email renderer', function () {
                     }
                 },
                 storageUtils: {
-                    isLocalImage(url) {
-                        return url === 'http://your-blog.com/content/images/2017/01/02/example.png';
-                    }
+                    isLocalImage: isLocal,
+                    isInternalImage: isLocal
                 }
             });
             const response = await emailRenderer.limitImageWidth('http://your-blog.com/content/images/2017/01/02/example.png');
@@ -3061,8 +3263,11 @@ describe('Email renderer', function () {
                     }
                 },
                 storageUtils: {
-                    isLocalImage(url) {
-                        return url === 'http://your-blog.com/content/images/2017/01/02/example.png';
+                    isLocalImage() {
+                        return false;
+                    },
+                    isInternalImage() {
+                        return false;
                     }
                 }
             });
@@ -3083,8 +3288,11 @@ describe('Email renderer', function () {
                     }
                 },
                 storageUtils: {
-                    isLocalImage(url) {
-                        return url === 'http://your-blog.com/content/images/2017/01/02/example.png';
+                    isLocalImage() {
+                        return false;
+                    },
+                    isInternalImage() {
+                        return false;
                     }
                 }
             });
@@ -3104,8 +3312,11 @@ describe('Email renderer', function () {
                     }
                 },
                 storageUtils: {
-                    isLocalImage(url) {
-                        return url === 'http://your-blog.com/content/images/2017/01/02/example.png';
+                    isLocalImage() {
+                        return false;
+                    },
+                    isInternalImage() {
+                        return false;
                     }
                 }
             });
@@ -3129,6 +3340,9 @@ describe('Email renderer', function () {
                 imageSize: cachedImageSize,
                 storageUtils: {
                     isLocalImage() {
+                        return false;
+                    },
+                    isInternalImage() {
                         return false;
                     }
                 }
@@ -3154,6 +3368,9 @@ describe('Email renderer', function () {
                 imageSize: cachedImageSize,
                 storageUtils: {
                     isLocalImage() {
+                        return false;
+                    },
+                    isInternalImage() {
                         return false;
                     }
                 }
@@ -3187,6 +3404,9 @@ describe('Email renderer', function () {
                 storageUtils: {
                     isLocalImage() {
                         return false;
+                    },
+                    isInternalImage() {
+                        return false;
                     }
                 }
             });
@@ -3215,6 +3435,9 @@ describe('Email renderer', function () {
                 imageSize: cachedImageSize,
                 storageUtils: {
                     isLocalImage() {
+                        return false;
+                    },
+                    isInternalImage() {
                         return false;
                     }
                 }

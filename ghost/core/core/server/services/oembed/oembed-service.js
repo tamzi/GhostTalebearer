@@ -10,7 +10,8 @@ const iconv = require('iconv-lite');
 const path = require('path');
 
 // Some sites block non-standard user agents so we need to mimic a typical browser
-const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36';
+// Note: the Ghost/5.0 string _may_ be in use by 3rd parties so use caution when updating across majors
+const USER_AGENT = 'Mozilla/5.0 (compatible; Ghost/5.0; +https://ghost.org/)';
 
 const messages = {
     noUrlProvided: 'No url provided.',
@@ -99,6 +100,7 @@ class OEmbedService {
 
     /**
      * @param {string} url
+     * @returns {Promise<never>}
      */
     async unknownProvider(url) {
         throw new errors.ValidationError({
@@ -184,7 +186,9 @@ class OEmbedService {
                 headers: {
                     'user-agent': USER_AGENT
                 },
-                timeout: 2000,
+                timeout: {
+                    request: 2000
+                },
                 followRedirect: true,
                 ...options
             });
@@ -260,17 +264,33 @@ class OEmbedService {
      * @param {string} url
      * @param {string} html
      *
-     * @returns {Promise<Object>}
+     * @returns {Promise<{
+     *     version: '1.0',
+     *     type: 'bookmark',
+     *     url: string,
+     *     metadata: Omit<import('metascraper').Metadata, 'image'|'logo'> & {
+     *         thumbnail?: string,
+     *         icon?: string
+     *     }
+     * }>}
      */
     async fetchBookmarkData(url, html, type) {
+        const requestOptions = this.externalRequest.defaults?.options || {};
         const gotOpts = {
+            hooks: requestOptions.hooks,
+            retry: requestOptions.retry,
+            timeout: requestOptions.timeout,
+            ...requestOptions,
             headers: {
+                ...(requestOptions.headers || {}),
                 'User-Agent': USER_AGENT
             }
         };
 
         if (process.env.NODE_ENV?.startsWith('test')) {
-            gotOpts.retry = 0;
+            gotOpts.retry = {
+                limit: 0
+            };
         }
 
         const pickFn = (sizes, pickDefault) => {

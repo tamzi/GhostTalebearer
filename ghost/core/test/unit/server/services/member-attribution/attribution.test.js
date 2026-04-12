@@ -1,4 +1,3 @@
-const should = require('should');
 const {assertObjectMatches} = require('../../../../utils/assertions');
 
 const UrlHistory = require('../../../../../core/server/services/member-attribution/url-history');
@@ -70,6 +69,9 @@ describe('AttributionBuilder', function () {
                 return url;
             },
             getUrlByResourceId() {
+                return 'https://absolute/dir/path';
+            },
+            getResourceUrl() {
                 return 'https://absolute/dir/path';
             },
             relativeToAbsolute(path) {

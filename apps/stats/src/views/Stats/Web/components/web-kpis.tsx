@@ -1,6 +1,8 @@
-import {BarChartLoadingIndicator, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, GhAreaChart, KpiDropdownButton, KpiTabTrigger, KpiTabValue, Tabs, TabsList, formatDuration, formatNumber, formatPercentage, getYRange} from '@tryghost/shade';
+import {BarChartLoadingIndicator, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, GhAreaChart, KpiDropdownButton, KpiTabTrigger, KpiTabValue, Tabs, TabsList} from '@tryghost/shade/components';
 import {KPI_METRICS} from '../web';
 import {STATS_RANGES} from '@src/utils/constants';
+import {formatDuration, formatNumber, formatPercentage} from '@tryghost/shade/utils';
+import {getYRange} from '@tryghost/shade/app';
 import {sanitizeChartData, truncateLeadingEmptyData} from '@src/utils/chart-helpers';
 import {useMemo, useState} from 'react';
 
@@ -84,22 +86,22 @@ const WebKPIs: React.FC<WebKPIsProps> = ({data, range, isLoading}) => {
 
     return (
         <Tabs data-testid='web-graph' defaultValue="visits" variant='kpis'>
-            <TabsList className="-mx-6 hidden grid-cols-2 md:!visible md:!grid">
+            <TabsList className="-mx-6 hidden grid-cols-2 md:visible! md:grid!">
                 <KpiTabTrigger value="visits" onClick={() => setCurrentTab('visits')}>
-                    <KpiTabValue color='hsl(var(--chart-blue))' label="Unique visitors" value={kpiValues.visits} />
+                    <KpiTabValue color='var(--chart-blue)' label="Unique visitors" value={kpiValues.visits} />
                 </KpiTabTrigger>
                 <KpiTabTrigger value="views" onClick={() => setCurrentTab('views')}>
-                    <KpiTabValue color='hsl(var(--chart-teal))' label="Total views" value={kpiValues.views} />
+                    <KpiTabValue color='var(--chart-teal)' label="Total views" value={kpiValues.views} />
                 </KpiTabTrigger>
             </TabsList>
             <DropdownMenu>
                 <DropdownMenuTrigger className='md:hidden' asChild>
                     <KpiDropdownButton>
                         {currentTab === 'visits' &&
-                            <KpiTabValue color='hsl(var(--chart-blue))' label="Unique visitors" value={kpiValues.visits} />
+                            <KpiTabValue color='var(--chart-blue)' label="Unique visitors" value={kpiValues.visits} />
                         }
                         {currentTab === 'views' &&
-                            <KpiTabValue color='hsl(var(--chart-teal))' label="Total views" value={kpiValues.views} />
+                            <KpiTabValue color='var(--chart-teal)' label="Total views" value={kpiValues.views} />
                         }
                     </KpiDropdownButton>
                 </DropdownMenuTrigger>

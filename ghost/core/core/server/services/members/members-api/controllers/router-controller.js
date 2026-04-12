@@ -1,4 +1,5 @@
 const dns = require('node:dns/promises');
+const crypto = require('node:crypto');
 const tpl = require('@tryghost/tpl');
 const logging = require('@tryghost/logging');
 const sanitizeHtml = require('sanitize-html');
@@ -6,6 +7,7 @@ const {BadRequestError, NoPermissionError, UnauthorizedError, DisabledFeatureErr
 const errors = require('@tryghost/errors');
 const {isEmail} = require('@tryghost/validator');
 const normalizeEmail = require('../utils/normalize-email');
+const hasActiveOffer = require('../utils/has-active-offer');
 const {getInboxLinks} = require('../../../../lib/get-inbox-links');
 const {SIGNUP_CONTEXTS} = require('../../../lib/member-signup-contexts');
 /** @typedef {import('../../../lib/member-signup-contexts').SignupContext} SignupContext */
@@ -25,9 +27,9 @@ const messages = {
     inviteOnly: 'This site is invite-only, contact the owner for access.',
     paidOnly: 'This site only accepts paid members.',
     memberNotFound: 'No member exists with this e-mail address.',
-    memberNotFoundSignUp: 'No member exists with this e-mail address. Please sign up first.',
     invalidType: 'Invalid checkout type.',
     notConfigured: 'This site is not accepting payments at the moment.',
+    giftSubscriptionsNotEnabled: 'Gift subscriptions are not enabled on this site.',
     invalidNewsletters: 'Cannot subscribe to invalid newsletters {newsletters}',
     archivedNewsletters: 'Cannot subscribe to archived newsletters {newsletters}',
     otcNotSupported: 'OTC verification not supported.',
@@ -597,6 +599,39 @@ module.exports = class RouterController {
         }
     }
 
+    /**
+     * @param {object} options
+     * @param {object} options.tier
+     * @param {'month'|'year'} options.cadence
+     * @param {string} options.email
+     * @param {string} options.successUrl
+     * @param {string} options.cancelUrl
+     * @param {object} options.metadata
+     * @param {object} [options.member]
+     * @param {boolean} options.isAuthenticated
+     * @returns
+     */
+    async _createGiftCheckoutSession(options) {
+        if (!this._paymentsService.stripeAPIService.configured) {
+            throw new DisabledFeatureError({
+                message: tpl(messages.notConfigured)
+            });
+        }
+
+        try {
+            const paymentLink = await this._paymentsService.getGiftPaymentLink(options);
+
+            return {url: paymentLink};
+        } catch (err) {
+            logging.error(err);
+            this._sentry?.captureException?.(err);
+            throw new BadRequestError({
+                err,
+                message: tpl(messages.unableToCheckout)
+            });
+        }
+    }
+
     async createCheckoutSession(req, res) {
         const type = req.body.type ?? 'subscription';
         const metadata = req.body.metadata ?? {};
@@ -604,7 +639,7 @@ module.exports = class RouterController {
         const membersEnabled = true;
 
         // Check this checkout type is supported
-        if (typeof type !== 'string' || !['subscription', 'donation'].includes(type)) {
+        if (typeof type !== 'string' || !['subscription', 'donation', 'gift'].includes(type)) {
             throw new BadRequestError({
                 message: tpl(messages.invalidType)
             });
@@ -681,6 +716,42 @@ module.exports = class RouterController {
         } else if (type === 'donation') {
             options.personalNote = parsePersonalNote(req.body.personalNote);
             response = await this._createDonationCheckoutSession(options);
+        } else if (type === 'gift') {
+            if (!this.labsService.isSet('giftSubscriptions')) {
+                throw new BadRequestError({
+                    message: tpl(messages.giftSubscriptionsNotEnabled)
+                });
+            }
+
+            if (!membersEnabled) {
+                throw new BadRequestError({
+                    message: tpl(messages.badRequest)
+                });
+            }
+
+            if (typeof req.body.customerEmail !== 'string' || !isEmail(req.body.customerEmail)) {
+                throw new BadRequestError({
+                    message: tpl(messages.badRequest),
+                    context: 'A valid email address is required to purchase a gift subscription'
+                });
+            }
+
+            if (req.body.offerId) {
+                throw new BadRequestError({
+                    message: tpl(messages.badRequest),
+                    context: 'Offers cannot be applied to gift subscriptions'
+                });
+            }
+
+            const data = await this._getSubscriptionCheckoutData(req.body);
+
+            response = await this._createGiftCheckoutSession({
+                ...options,
+                ...data,
+                duration: 1, // gifts are currently 1 month or 1 year only
+                successUrl: this._urlUtils.getSiteUrl(),
+                cancelUrl: this._urlUtils.getSiteUrl()
+            });
         }
 
         res.writeHead(200, {
@@ -798,7 +869,7 @@ module.exports = class RouterController {
         if (!tokenValue) {
             throw new errors.BadRequestError({
                 message: tpl(messages.invalidCode),
-                code: 'INVALID_OTC_REF'
+                code: 'INVALID_OTC'
             });
         }
 
@@ -886,9 +957,9 @@ module.exports = class RouterController {
         const member = await this._memberRepository.get({email: normalizedEmail});
 
         if (!member) {
-            throw new errors.BadRequestError({
-                message: this._allowSelfSignup() ? tpl(messages.memberNotFoundSignUp) : tpl(messages.memberNotFound)
-            });
+            // Return a fake otcRef when OTC was requested so the response
+            // shape is identical regardless of whether a member exists
+            return includeOTC ? {otcRef: crypto.randomUUID()} : {};
         }
 
         const tokenData = {};
@@ -1024,14 +1095,8 @@ module.exports = class RouterController {
             return sendNoOffersAvailable();
         }
 
-        // If subscription already has an offer applied (e.g. signup offer), don't show retention offers
-        if (activeSubscription.get('offer_id')) {
-            return sendNoOffersAvailable();
-        }
-
-        // If subscription is in a trial period (either offer-based or tier-based), don't show retention offers
-        const trialEndAt = activeSubscription.get('trial_end_at');
-        if (trialEndAt && trialEndAt > new Date()) {
+        // If subscription has an active offer, don't show retention offers
+        if (await hasActiveOffer(activeSubscription, this._offersAPI)) {
             return sendNoOffersAvailable();
         }
 

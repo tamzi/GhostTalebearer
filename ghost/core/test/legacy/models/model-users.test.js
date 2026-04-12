@@ -1,7 +1,6 @@
 const assert = require('node:assert/strict');
 const {assertExists} = require('../../utils/assertions');
 const errors = require('@tryghost/errors');
-const should = require('should');
 const sinon = require('sinon');
 const testUtils = require('../../utils');
 const config = require('../../../core/shared/config');
@@ -37,7 +36,7 @@ describe('User Model', function run() {
 
             UserModel.add(userData, context).then(function (createdUser) {
                 assertExists(createdUser);
-                createdUser.attributes.password.should.not.equal(userData.password, 'password was hashed');
+                assert.notEqual(createdUser.attributes.password, userData.password, 'password was hashed');
                 assert.equal(createdUser.attributes.email, userData.email, 'email address correct');
 
                 done();
@@ -244,7 +243,7 @@ describe('User Model', function run() {
                 return UserModel.add(userData, _.extend({}, context, {withRelated: ['roles']}));
             }).then(function (createdUser) {
                 assertExists(createdUser);
-                createdUser.get('password').should.not.equal(userData.password, 'password was hashed');
+                assert.notEqual(createdUser.get('password'), userData.password, 'password was hashed');
                 assert.equal(createdUser.get('email'), userData.email, 'email address correct');
                 assert.equal(createdUser.related('roles').toJSON()[0].name, 'Administrator', 'role set correctly');
 
@@ -459,7 +458,7 @@ describe('User Model', function run() {
                     assert.equal(user.get('slug'), 'max');
 
                     // naive check that password was hashed
-                    user.get('password').should.not.eql(userData.password);
+                    assert.notEqual(user.get('password'), userData.password);
                     done();
                 })
                 .catch(done);

@@ -329,12 +329,12 @@ async function initServices() {
     const emailService = require('./server/services/email-service');
     const emailAnalytics = require('./server/services/email-analytics');
     const mentionsService = require('./server/services/mentions');
-    const mentionsEmailReport = require('./server/services/mentions-email-report');
     const tagsPublic = require('./server/services/tags-public');
     const postsPublic = require('./server/services/posts-public');
     const slackNotifications = require('./server/services/slack-notifications');
     const mediaInliner = require('./server/services/media-inliner');
     const donationService = require('./server/services/donations');
+    const giftService = require('./server/services/gifts');
     const recommendationsService = require('./server/services/recommendations');
     const emailAddressService = require('./server/services/email-address');
     const statsService = require('./server/services/stats');
@@ -353,7 +353,6 @@ async function initServices() {
         identityTokens.init(),
         memberAttribution.init(),
         mentionsService.init(),
-        mentionsEmailReport.init(),
         staffService.init(),
         members.init(),
         tiers.init(),
@@ -380,6 +379,10 @@ async function initServices() {
         statsService.init(),
         explorePingService.init()
     ]);
+
+    // Gift service depends on members, tiers, and staff services
+    await giftService.init();
+
     debug('End: Services');
 
     debug('End: initServices');

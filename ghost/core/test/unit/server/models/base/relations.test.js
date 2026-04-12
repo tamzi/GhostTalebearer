@@ -1,4 +1,3 @@
-const should = require('should');
 const sinon = require('sinon');
 const models = require('../../../../../core/server/models');
 const assert = require('node:assert/strict');
@@ -35,15 +34,15 @@ describe('Models: getLazyRelation', function () {
         const options = {test: true};
         const modelA = TestModel.forge({id: '1'});
         assert.equal((await modelA.getLazyRelation('tiers', options)), rel);
-        assert.equal(fetchStub.calledOnceWithExactly(options), true);
+        sinon.assert.calledOnceWithExactly(fetchStub, options);
 
         // Check if it can reuse it again
         assert.equal((await modelA.getLazyRelation('tiers', options)), rel);
-        assert.equal(fetchStub.calledOnceWithExactly(options), true);
+        sinon.assert.calledOnceWithExactly(fetchStub, options);
 
         // Check if we can force reload
         await assert.rejects(modelA.getLazyRelation('tiers', {forceRefresh: true}), /Called twice/);
-        assert.equal(fetchStub.calledTwice, true);
+        sinon.assert.calledTwice(fetchStub);
     });
 
     it('can fetch models', async function () {
@@ -70,15 +69,15 @@ describe('Models: getLazyRelation', function () {
         const options = {test: true};
         const modelA = TestModel.forge({id: '1'});
         assert.equal((await modelA.getLazyRelation('other', options)), rel);
-        assert.equal(fetchStub.calledOnceWithExactly(options), true);
+        sinon.assert.calledOnceWithExactly(fetchStub, options);
 
         // Check if it can reuse it again
         assert.equal((await modelA.getLazyRelation('other', options)), rel);
-        assert.equal(fetchStub.calledOnceWithExactly(options), true);
+        sinon.assert.calledOnceWithExactly(fetchStub, options);
 
         // Check if we can force reload
         await assert.rejects(modelA.getLazyRelation('other', {forceRefresh: true}), /Called twice/);
-        assert.equal(fetchStub.calledTwice, true);
+        sinon.assert.calledTwice(fetchStub);
     });
 
     it('can handle fetch of model without id for optional relations', async function () {

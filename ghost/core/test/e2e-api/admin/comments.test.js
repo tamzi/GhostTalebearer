@@ -1,5 +1,4 @@
 const assert = require('node:assert/strict');
-require('should');
 const ObjectId = require('bson-objectid').default;
 const {
     agentProvider,
@@ -280,8 +279,9 @@ describe(`Admin Comments API`, function () {
 
             const res = await adminApi.get('/comments/post/' + postId + '/');
             const item = res.body.comments.find(cmt => parent.id === cmt.id);
-            const lastReply = item.replies[item.replies.length - 1];
-            const filter = encodeURIComponent(`id:>'${lastReply.id}'`);
+            // Use the 3rd reply as cursor to simulate "load more after first 3"
+            const thirdReply = item.replies[2];
+            const filter = encodeURIComponent(`id:>'${thirdReply.id}'`);
             const res2 = await adminApi.get(`/comments/${parent.id}/replies?limit=5&filter=${filter}`);
             assert.equal(res2.body.comments.length, 3);
         });
@@ -320,8 +320,10 @@ describe(`Admin Comments API`, function () {
 
             const res = await adminApi.get('/comments/post/' + postId + '/');
             const item = res.body.comments.find(cmt => parent.id === cmt.id);
-            const lastReply = item.replies[item.replies.length - 1];
-            const filter = encodeURIComponent(`id:>'${lastReply.id}'`);
+            // Admin browse returns all non-deleted replies (published + hidden)
+            // Use the 3rd reply as cursor to simulate "load more after first 3"
+            const thirdReply = item.replies[2];
+            const filter = encodeURIComponent(`id:>'${thirdReply.id}'`);
             const res2 = await adminApi.get(`/comments/${parent.id}/replies?limit=5&filter=${filter}`);
             assert.equal(res2.body.comments.length, 3);
         });
@@ -352,8 +354,9 @@ describe(`Admin Comments API`, function () {
 
             const res = await adminApi.get('/comments/post/' + postId + '/');
             const item = res.body.comments.find(cmt => parent.id === cmt.id);
-            const lastReply = item.replies[item.replies.length - 1];
-            const filter = encodeURIComponent(`id:>'${lastReply.id}'`);
+            // Use the 3rd reply as cursor to fetch remaining replies
+            const thirdReply = item.replies[2];
+            const filter = encodeURIComponent(`id:>'${thirdReply.id}'`);
             const res2 = await adminApi.get(`/comments/${parent.id}/replies?limit=5&filter=${filter}`);
             assert.equal(res2.body.comments.length, 1);
             assert.equal(res2.body.comments[0].html, 'Reply 4');
@@ -442,8 +445,9 @@ describe(`Admin Comments API`, function () {
 
             const res = await adminApi.get('/comments/post/' + postId + '/');
             const item = res.body.comments.find(cmt => parent.id === cmt.id);
-            const lastReply = item.replies[item.replies.length - 1];
-            const filter = encodeURIComponent(`id:>'${lastReply.id}'`);
+            // Use the 3rd reply as cursor to simulate "load more after first 3"
+            const thirdReply = item.replies[2];
+            const filter = encodeURIComponent(`id:>'${thirdReply.id}'`);
             const res2 = await adminApi.get(`/comments/${parent.id}/replies?limit=10&filter=${filter}`);
             assert.equal(res2.body.comments.length, 3);
             assert.equal(res2.body.comments[0].html, 'Reply 4');
@@ -1338,12 +1342,14 @@ describe(`Admin Comments API`, function () {
             await dbFns.addComment({
                 post_id: fixtureManager.get('posts', 0).id,
                 member_id: fixtureManager.get('members', 0).id,
-                html: '<p>Comment on post 1</p>'
+                html: '<p>Comment on post 1</p>',
+                created_at: new Date('2025-01-01T00:00:00.000Z')
             });
             await dbFns.addComment({
                 post_id: fixtureManager.get('posts', 1).id,
                 member_id: fixtureManager.get('members', 0).id,
-                html: '<p>Comment on post 2</p>'
+                html: '<p>Comment on post 2</p>',
+                created_at: new Date('2024-01-01T00:00:00.000Z')
             });
 
             await adminApi.get('/comments/')
@@ -1675,14 +1681,16 @@ describe(`Admin Comments API`, function () {
                 html: '<p>Reported comment</p>'
             });
 
-            // Add reports from different members
+            // Add reports from different members with explicit timestamps to ensure deterministic ordering
             await models.CommentReport.add({
                 comment_id: comment.id,
-                member_id: fixtureManager.get('members', 1).id
+                member_id: fixtureManager.get('members', 1).id,
+                created_at: new Date('2023-06-01')
             });
             await models.CommentReport.add({
                 comment_id: comment.id,
-                member_id: fixtureManager.get('members', 2).id
+                member_id: fixtureManager.get('members', 2).id,
+                created_at: new Date('2023-01-01')
             });
 
             await adminApi.get(`/comments/${comment.id}/reports/`)
@@ -1798,14 +1806,16 @@ describe(`Admin Comments API`, function () {
                 html: '<p>Liked comment</p>'
             });
 
-            // Add likes from different members
+            // Add likes from different members with explicit timestamps to ensure deterministic ordering
             await models.CommentLike.add({
                 comment_id: comment.id,
-                member_id: fixtureManager.get('members', 1).id
+                member_id: fixtureManager.get('members', 1).id,
+                created_at: new Date('2023-06-01')
             });
             await models.CommentLike.add({
                 comment_id: comment.id,
-                member_id: fixtureManager.get('members', 2).id
+                member_id: fixtureManager.get('members', 2).id,
+                created_at: new Date('2023-01-01')
             });
 
             await adminApi.get(`/comments/${comment.id}/likes/`)

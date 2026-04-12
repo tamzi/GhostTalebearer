@@ -1,6 +1,5 @@
 const assert = require('node:assert/strict');
 const {assertExists} = require('../../../utils/assertions');
-const should = require('should');
 const sinon = require('sinon');
 const hbs = require('../../../../core/frontend/services/theme-engine/engine');
 const cancel_link = require('../../../../core/frontend/helpers/cancel_link');
@@ -29,7 +28,7 @@ describe('{{cancel_link}} helper', function () {
     const defaultLinkClass = /class="gh-subscription-cancel"/;
     const defaultErrorElementClass = /class="gh-error gh-error-subscription-cancel"/;
     const defaultCancelLinkText = /Cancel subscription/;
-    const defaultContinueLinkText = /Continue subscription/;
+    const defaultContinueLinkText = /Resume subscription/;
 
     it('should throw if subscription data is incorrect', function () {
         const runHelper = function (data) {
@@ -52,11 +51,11 @@ describe('{{cancel_link}} helper', function () {
         });
         assertExists(rendered);
 
-        rendered.string.should.match(defaultLinkClass);
+        assert.match(rendered.string, defaultLinkClass);
         assert.match(rendered.string, /data-members-cancel-subscription="sub_cancel"/);
-        rendered.string.should.match(defaultCancelLinkText);
+        assert.match(rendered.string, defaultCancelLinkText);
 
-        rendered.string.should.match(defaultErrorElementClass);
+        assert.match(rendered.string, defaultErrorElementClass);
     });
 
     it('can render continue subscription link', function () {
@@ -66,9 +65,9 @@ describe('{{cancel_link}} helper', function () {
         });
         assertExists(rendered);
 
-        rendered.string.should.match(defaultLinkClass);
+        assert.match(rendered.string, defaultLinkClass);
         assert.match(rendered.string, /data-members-continue-subscription="sub_continue"/);
-        rendered.string.should.match(defaultContinueLinkText);
+        assert.match(rendered.string, defaultContinueLinkText);
     });
 
     it('can render custom link class', function () {

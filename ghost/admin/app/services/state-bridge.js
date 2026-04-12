@@ -6,10 +6,13 @@ import {inject} from 'ghost-admin/decorators/inject';
 import {run} from '@ember/runloop';
 
 const emberDataTypeMapping = {
+    AutomatedEmailDesignResponseType: null, // automated email design settings only exist in React admin
     AutomatedEmailsResponseType: null, // automated emails only exist in React admin
     CommentsResponseType: null, // comments only exist in React admin
     IntegrationsResponseType: {type: 'integration'},
     InvitesResponseType: {type: 'invite'},
+    LabelsResponseType: null, // labels only exist in React admin
+    MembersResponseType: null, // members only exist in React admin
     OffersResponseType: {type: 'offer'},
     NewslettersResponseType: {type: 'newsletter'},
     RecommendationResponseType: {type: 'recommendation'},

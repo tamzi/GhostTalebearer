@@ -1,12 +1,13 @@
 import CommentContent from './comment-content';
 import React from 'react';
-import {Button, LoadingIndicator, LucideIcon} from '@tryghost/shade';
+import {Button, LoadingIndicator} from '@tryghost/shade/components';
 import {Comment, useHideComment, useShowComment} from '@tryghost/admin-x-framework/api/comments';
 import {CommentAvatar} from './comment-avatar';
 import {CommentHeader} from './comment-header';
 import {CommentMenu} from './comment-menu';
 import {CommentMetrics, buildThreadLink} from './comment-metrics';
 import {Link, useSearchParams} from '@tryghost/admin-x-framework';
+import {LucideIcon} from '@tryghost/shade/utils';
 
 function RepliesLine({hasReplies}: {hasReplies: boolean}) {
     if (!hasReplies) {
@@ -105,7 +106,7 @@ function CommentRow({comment, isReply = false, isSelectedComment = false, select
 
                     {/* Render nested replies INSIDE the parent comment */}
                     {hasReplies && comment.replies && (
-                        <div className="-ml-2 mb-4 mt-7 pl-2 md:-ml-3 md:mb-0 md:mt-8 md:pl-3">
+                        <div className="mt-7 mb-4 -ml-2 pl-2 md:mt-8 md:mb-0 md:-ml-3 md:pl-3">
                             {comment.replies.map(reply => (
                                 <CommentRow
                                     key={reply.id}

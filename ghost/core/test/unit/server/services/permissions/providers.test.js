@@ -1,5 +1,4 @@
 const assert = require('node:assert/strict');
-const should = require('should');
 const sinon = require('sinon');
 const testUtils = require('../../../../utils');
 const models = require('../../../../../core/server/models');
@@ -25,7 +24,7 @@ describe('Permission Providers', function () {
                     done(new Error('Should have thrown a user not found error'));
                 })
                 .catch(function (err) {
-                    assert.equal(findUserSpy.callCount, 1);
+                    sinon.assert.calledOnce(findUserSpy);
                     assert.equal(err.errorType, 'NotFoundError');
                     done();
                 });
@@ -59,9 +58,11 @@ describe('Permission Providers', function () {
             // Get permissions for the user
             providers.user(1)
                 .then(function (res) {
-                    assert.equal(findUserSpy.callCount, 1);
+                    sinon.assert.calledOnce(findUserSpy);
 
-                    res.should.be.an.Object().with.properties('permissions', 'roles');
+                    assert(res && typeof res === 'object');
+                    assert('permissions' in res);
+                    assert('roles' in res);
 
                     assert(Array.isArray(res.permissions));
                     assert.equal(res.permissions.length, 10);
@@ -71,10 +72,15 @@ describe('Permission Providers', function () {
                     // @TODO fix this!
                     // Permissions is an array of models
                     // Roles is a JSON array
-                    res.permissions[0].should.be.an.Object().with.properties('attributes', 'id');
-                    res.roles[0].should.be.an.Object().with.properties('id', 'name', 'description');
+                    assert(res.permissions[0] && typeof res.permissions[0] === 'object');
+                    assert('attributes' in res.permissions[0]);
+                    assert('id' in res.permissions[0]);
+                    assert(res.roles[0] && typeof res.roles[0] === 'object');
+                    assert('id' in res.roles[0]);
+                    assert('name' in res.roles[0]);
+                    assert('description' in res.roles[0]);
                     assert(res.permissions[0] instanceof models.Base.Model);
-                    res.roles[0].should.not.be.instanceOf(models.Base.Model);
+                    assert(!(res.roles[0] instanceof models.Base.Model));
 
                     done();
                 })
@@ -111,9 +117,11 @@ describe('Permission Providers', function () {
             // Get permissions for the user
             providers.user(1)
                 .then(function (res) {
-                    assert.equal(findUserSpy.callCount, 1);
+                    sinon.assert.calledOnce(findUserSpy);
 
-                    res.should.be.an.Object().with.properties('permissions', 'roles');
+                    assert(res && typeof res === 'object');
+                    assert('permissions' in res);
+                    assert('roles' in res);
 
                     assert(Array.isArray(res.permissions));
                     assert.equal(res.permissions.length, 10);
@@ -123,10 +131,15 @@ describe('Permission Providers', function () {
                     // @TODO fix this!
                     // Permissions is an array of models
                     // Roles is a JSON array
-                    res.permissions[0].should.be.an.Object().with.properties('attributes', 'id');
-                    res.roles[0].should.be.an.Object().with.properties('id', 'name', 'description');
+                    assert(res.permissions[0] && typeof res.permissions[0] === 'object');
+                    assert('attributes' in res.permissions[0]);
+                    assert('id' in res.permissions[0]);
+                    assert(res.roles[0] && typeof res.roles[0] === 'object');
+                    assert('id' in res.roles[0]);
+                    assert('name' in res.roles[0]);
+                    assert('description' in res.roles[0]);
                     assert(res.permissions[0] instanceof models.Base.Model);
-                    res.roles[0].should.not.be.instanceOf(models.Base.Model);
+                    assert(!(res.roles[0] instanceof models.Base.Model));
 
                     done();
                 })
@@ -164,9 +177,11 @@ describe('Permission Providers', function () {
             // Get permissions for the user
             providers.user(1)
                 .then(function (res) {
-                    assert.equal(findUserSpy.callCount, 1);
+                    sinon.assert.calledOnce(findUserSpy);
 
-                    res.should.be.an.Object().with.properties('permissions', 'roles');
+                    assert(res && typeof res === 'object');
+                    assert('permissions' in res);
+                    assert('roles' in res);
 
                     assert(Array.isArray(res.permissions));
                     assert.equal(res.permissions.length, 10);
@@ -176,10 +191,15 @@ describe('Permission Providers', function () {
                     // @TODO fix this!
                     // Permissions is an array of models
                     // Roles is a JSON array
-                    res.permissions[0].should.be.an.Object().with.properties('attributes', 'id');
-                    res.roles[0].should.be.an.Object().with.properties('id', 'name', 'description');
+                    assert(res.permissions[0] && typeof res.permissions[0] === 'object');
+                    assert('attributes' in res.permissions[0]);
+                    assert('id' in res.permissions[0]);
+                    assert(res.roles[0] && typeof res.roles[0] === 'object');
+                    assert('id' in res.roles[0]);
+                    assert('name' in res.roles[0]);
+                    assert('description' in res.roles[0]);
                     assert(res.permissions[0] instanceof models.Base.Model);
-                    res.roles[0].should.not.be.instanceOf(models.Base.Model);
+                    assert(!(res.roles[0] instanceof models.Base.Model));
 
                     done();
                 })
@@ -203,7 +223,7 @@ describe('Permission Providers', function () {
                 })
                 .catch((err) => {
                     assert.equal(err.errorType, 'UnauthorizedError');
-                    assert.equal(findUserSpy.callCount, 1);
+                    sinon.assert.calledOnce(findUserSpy);
                     done();
                 });
         });
@@ -218,7 +238,7 @@ describe('Permission Providers', function () {
                     done(new Error('Should have thrown an api key not found error'));
                 })
                 .catch((err) => {
-                    assert.equal(findApiKeySpy.callCount, 1);
+                    sinon.assert.calledOnce(findApiKeySpy);
                     assert.equal(err.errorType, 'NotFoundError');
                     done();
                 });
@@ -238,14 +258,21 @@ describe('Permission Providers', function () {
                 return Promise.resolve(fakeApiKey);
             });
             providers.apiKey(1).then((res) => {
-                assert.equal(findApiKeySpy.callCount, 1);
-                res.should.be.an.Object().with.properties('permissions', 'roles');
+                sinon.assert.calledOnce(findApiKeySpy);
+                assert(res && typeof res === 'object');
+                assert('permissions' in res);
+                assert('roles' in res);
                 assert(Array.isArray(res.roles));
                 assert.equal(res.roles.length, 1);
-                res.permissions[0].should.be.an.Object().with.properties('attributes', 'id');
-                res.roles[0].should.be.an.Object().with.properties('id', 'name', 'description');
+                assert(res.permissions[0] && typeof res.permissions[0] === 'object');
+                assert('attributes' in res.permissions[0]);
+                assert('id' in res.permissions[0]);
+                assert(res.roles[0] && typeof res.roles[0] === 'object');
+                assert('id' in res.roles[0]);
+                assert('name' in res.roles[0]);
+                assert('description' in res.roles[0]);
                 assert(res.permissions[0] instanceof models.Base.Model);
-                res.roles[0].should.not.be.instanceOf(models.Base.Model);
+                assert(!(res.roles[0] instanceof models.Base.Model));
                 done();
             }).catch(done);
         });

@@ -1,6 +1,5 @@
 const assert = require('node:assert/strict');
 const {assertExists} = require('../../../../utils/assertions');
-const should = require('should');
 const sinon = require('sinon');
 const hbs = require('../../../../../core/frontend/services/theme-engine/engine');
 const middleware = require('../../../../../core/frontend/services/theme-engine').middleware;
@@ -10,6 +9,7 @@ const settingsCache = require('../../../../../core/shared/settings-cache');
 const customThemeSettingsCache = require('../../../../../core/shared/custom-theme-settings-cache');
 const config = require('../../../../../core/shared/config');
 const labs = require('../../../../../core/shared/labs');
+const urlUtils = require('../../../../../core/shared/url-utils');
 
 const sandbox = sinon.createSandbox();
 
@@ -97,8 +97,8 @@ describe('Themes middleware', function () {
             try {
                 assert.equal(err, undefined);
 
-                assert.equal(fakeActiveTheme.mount.called, true);
-                assert.equal(fakeActiveTheme.mount.calledWith(req.app), true);
+                sinon.assert.called(fakeActiveTheme.mount);
+                sinon.assert.calledWith(fakeActiveTheme.mount, req.app);
 
                 done();
             } catch (error) {
@@ -114,7 +114,7 @@ describe('Themes middleware', function () {
             try {
                 assert.equal(err, undefined);
 
-                assert.equal(fakeActiveTheme.mount.called, false);
+                sinon.assert.notCalled(fakeActiveTheme.mount);
 
                 done();
             } catch (error) {
@@ -134,8 +134,8 @@ describe('Themes middleware', function () {
                 assertExists(err);
                 assert.equal(err.message, 'The currently active theme "bacon-sensation" is missing.');
 
-                assert.equal(activeThemeGetStub.called, true);
-                assert.equal(fakeActiveTheme.mount.called, false);
+                sinon.assert.called(activeThemeGetStub);
+                sinon.assert.notCalled(fakeActiveTheme.mount);
 
                 done();
             } catch (error) {
@@ -152,16 +152,21 @@ describe('Themes middleware', function () {
                 try {
                     assert.equal(err, undefined);
 
-                    assert.equal(hbsUpdateTemplateOptionsStub.calledOnce, true);
+                    sinon.assert.calledOnce(hbsUpdateTemplateOptionsStub);
                     const templateOptions = hbsUpdateTemplateOptionsStub.firstCall.args[0];
                     const data = templateOptions.data;
 
-                    data.should.be.an.Object().with.properties('site', 'labs', 'config', 'custom');
+                    assert(data && typeof data === 'object');
+                    assert('site' in data);
+                    assert('labs' in data);
+                    assert('config' in data);
+                    assert('custom' in data);
 
                     // Check Theme Config
-                    data.config.should.be.an.Object()
-                        .with.properties(themeDataExpectedProps)
-                        .and.size(themeDataExpectedProps.length);
+                    assert(data.config && typeof data.config === 'object');
+                    assert('posts_per_page' in data.config);
+                    assert('image_sizes' in data.config);
+                    assert.equal(Object.keys(data.config).length, themeDataExpectedProps.length);
                     // posts per page should be set according to the stub
                     assert.equal(data.config.posts_per_page, 2);
 
@@ -207,6 +212,51 @@ describe('Themes middleware', function () {
         });
     });
 
+    describe('updateLocalTemplateOptions', function () {
+        it('includes admin_url ending with /ghost/ in site data', function (done) {
+            executeMiddleware(middleware, req, res, function next(err) {
+                try {
+                    assert.equal(err, undefined);
+
+                    sinon.assert.calledOnce(hbsUpdateLocalTemplateOptionsStub);
+                    const templateOptions = hbsUpdateLocalTemplateOptionsStub.firstCall.args[1];
+                    const data = templateOptions.data;
+
+                    assert(data.site.admin_url, 'admin_url should be set in site data');
+                    assert.equal(typeof data.site.admin_url, 'string');
+                    assert.ok(data.site.admin_url.endsWith('/ghost/'),
+                        `admin_url should end with /ghost/ but got: ${data.site.admin_url}`);
+
+                    done();
+                } catch (error) {
+                    done(error);
+                }
+            });
+        });
+
+        it('includes admin_url ending with /ghost/ when admin is on a separate domain', function (done) {
+            sandbox.stub(urlUtils, 'getAdminUrl').returns('https://admin.example.com/');
+
+            executeMiddleware(middleware, req, res, function next(err) {
+                try {
+                    assert.equal(err, undefined);
+
+                    sinon.assert.calledOnce(hbsUpdateLocalTemplateOptionsStub);
+                    const templateOptions = hbsUpdateLocalTemplateOptionsStub.firstCall.args[1];
+                    const data = templateOptions.data;
+
+                    assert.ok(data.site.admin_url.endsWith('/ghost/'),
+                        `admin_url should end with /ghost/ but got: ${data.site.admin_url}`);
+                    assert.equal(data.site.admin_url, 'https://admin.example.com/ghost/');
+
+                    done();
+                } catch (error) {
+                    done(error);
+                }
+            });
+        });
+    });
+
     describe('Preview Mode', function () {
         it('calls updateLocalTemplateOptions with correct data when one parameter is set', function (done) {
             const previewString = 'c=%23000fff';
@@ -218,13 +268,10 @@ describe('Themes middleware', function () {
                 try {
                     assert.equal(err, undefined);
 
-                    assert.equal(hbsUpdateLocalTemplateOptionsStub.calledOnce, true);
+                    sinon.assert.calledOnce(hbsUpdateLocalTemplateOptionsStub);
                     const templateOptions = hbsUpdateLocalTemplateOptionsStub.firstCall.args[1];
                     const data = templateOptions.data;
 
-                    data.should.be.an.Object().with.properties('site');
-
-                    data.site.should.be.an.Object().with.properties('accent_color', '_preview');
                     assert.equal(data.site._preview, previewString);
                     assert.equal(data.site.accent_color, '#000fff');
 
@@ -245,13 +292,10 @@ describe('Themes middleware', function () {
                 try {
                     assert.equal(err, undefined);
 
-                    assert.equal(hbsUpdateLocalTemplateOptionsStub.calledOnce, true);
+                    sinon.assert.calledOnce(hbsUpdateLocalTemplateOptionsStub);
                     const templateOptions = hbsUpdateLocalTemplateOptionsStub.firstCall.args[1];
                     const data = templateOptions.data;
 
-                    data.should.be.an.Object().with.properties('site');
-
-                    data.site.should.be.an.Object().with.properties('accent_color', 'icon', '_preview');
                     assert.equal(data.site._preview, previewString);
                     assert.equal(data.site.accent_color, '#000fff');
                     assert.equal(data.site.icon, '/content/images/myimg.png');
@@ -274,13 +318,12 @@ describe('Themes middleware', function () {
                 try {
                     assert.equal(err, undefined);
 
-                    assert.equal(hbsUpdateLocalTemplateOptionsStub.calledOnce, true);
+                    sinon.assert.calledOnce(hbsUpdateLocalTemplateOptionsStub);
                     const templateOptions = hbsUpdateLocalTemplateOptionsStub.firstCall.args[1];
                     const data = templateOptions.data;
 
-                    data.should.be.an.Object().with.properties('site', 'custom');
-
-                    data.custom.should.be.an.Object().with.properties('header_typography');
+                    assert(data && typeof data === 'object');
+                    assert('site' in data);
                     assert.equal(data.custom.header_typography, 'Serif');
 
                     done();
@@ -301,13 +344,14 @@ describe('Themes middleware', function () {
                 try {
                     assert.equal(err, undefined);
 
-                    assert.equal(hbsUpdateLocalTemplateOptionsStub.calledOnce, true);
+                    sinon.assert.calledOnce(hbsUpdateLocalTemplateOptionsStub);
                     const templateOptions = hbsUpdateLocalTemplateOptionsStub.firstCall.args[1];
                     const data = templateOptions.data;
 
-                    data.should.be.an.Object().with.properties('site', 'custom');
+                    assert(data && typeof data === 'object');
+                    assert('site' in data);
+                    assert('custom' in data);
 
-                    data.custom.should.be.an.Object().with.properties('header_typography');
                     assert.equal(data.custom.header_typography, 'Serif');
 
                     assert(!('unknown_setting' in data.custom));
@@ -329,12 +373,12 @@ describe('Themes middleware', function () {
                 try {
                     assert.equal(err, undefined);
 
-                    assert.equal(hbsUpdateLocalTemplateOptionsStub.calledOnce, true);
+                    sinon.assert.calledOnce(hbsUpdateLocalTemplateOptionsStub);
                     const templateOptions = hbsUpdateLocalTemplateOptionsStub.firstCall.args[1];
                     const data = templateOptions.data;
 
-                    data.should.be.an.Object().with.properties('site', 'custom');
-
+                    assert(data && typeof data === 'object');
+                    assert('site' in data);
                     assert.deepEqual(data.custom, {});
 
                     done();
@@ -354,12 +398,12 @@ describe('Themes middleware', function () {
                 try {
                     assert.equal(err, undefined);
 
-                    assert.equal(hbsUpdateLocalTemplateOptionsStub.calledOnce, true);
+                    sinon.assert.calledOnce(hbsUpdateLocalTemplateOptionsStub);
                     const templateOptions = hbsUpdateLocalTemplateOptionsStub.firstCall.args[1];
                     const data = templateOptions.data;
 
-                    data.should.be.an.Object().with.properties('site', 'custom');
-
+                    assert(data && typeof data === 'object');
+                    assert('site' in data);
                     assert.deepEqual(data.custom, {});
 
                     done();

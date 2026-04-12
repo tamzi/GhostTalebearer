@@ -1,6 +1,5 @@
 const assert = require('node:assert/strict');
 const {assertExists} = require('../../utils/assertions');
-const should = require('should');
 const sinon = require('sinon');
 const testUtils = require('../../utils');
 const _ = require('lodash');
@@ -27,7 +26,6 @@ describe('Exporter', function () {
                 'actions',
                 'api_keys',
                 'automated_email_recipients',
-                'automated_emails',
                 'benefits',
                 'brute',
                 'collections',
@@ -38,10 +36,12 @@ describe('Exporter', function () {
                 'custom_theme_settings',
                 'donation_payment_events',
                 'email_batches',
+                'email_design_settings',
                 'email_recipient_failures',
                 'email_recipients',
                 'email_spam_complaint_events',
                 'emails',
+                'gifts',
                 'integrations',
                 'invites',
                 'jobs',
@@ -100,7 +100,9 @@ describe('Exporter', function () {
                 'tags',
                 'tokens',
                 'users',
-                'webhooks'
+                'webhooks',
+                'welcome_email_automated_emails',
+                'welcome_email_automations'
             ];
 
             assertExists(exportData);
@@ -110,7 +112,11 @@ describe('Exporter', function () {
             // NOTE: using `Object.keys` here instead of `should.have.only.keys` assertion
             //       because when `have.only.keys` fails there's no useful diff
             assert.deepEqual(Object.keys(exportData.data).sort(), tables.sort());
-            Object.keys(exportData.data).sort().should.containDeep(Object.keys(exportedBodyLatest().db[0].data));
+            assert(
+                Object.keys(exportedBodyLatest().db[0].data).every(key => (
+                    Object.hasOwnProperty.call(exportData.data, key)
+                ))
+            );
             assert.equal(exportData.meta.version, ghostVersion.full);
 
             // excludes table should contain no data
@@ -129,7 +135,8 @@ describe('Exporter', function () {
                 'members_status_events',
                 'members_paid_subscription_events',
                 'members_subscribe_events',
-                'outbox'
+                'outbox',
+                'gifts'
             ];
 
             excludedTables.forEach((tableName) => {
